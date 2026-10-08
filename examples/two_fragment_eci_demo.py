@@ -149,6 +149,17 @@ def main():
     print(f"  triplet B excitations: {[f'{e*27.2114:.3f}' for e in r_B_trip['excitation_energies'][1:]]} eV")
     print()
 
+    # Sanity check: ECI assumes non-overlapping fragments.  At very short
+    # separations (< ~3.5 Angstrom for ethylene), the fragment densities
+    # overlap significantly and the strong-orthogonality assumption fails.
+    if args.separation < 3.5:
+        print()
+        print("WARNING: separation < 3.5 Angstrom.  Fragment densities")
+        print("overlap significantly at this distance, and the ECI strong-")
+        print("orthogonality assumption is violated.  Results below are")
+        print("not physically meaningful in the ECI framework.")
+        print()
+
     # --- Step 2: build Fragment objects
     frag_A = fragment_from_cis_result("A", r_A, spin=0)
     frag_B = fragment_from_cis_result("B", r_B, spin=0)
@@ -292,7 +303,12 @@ def main():
     if len(eci_triplets_sorted) >= 2:
         split_t = (eci_triplets_sorted[1] - eci_triplets_sorted[0]) * 1000
         print(f"Triplet excitonic splitting (T2 - T1): {split_t:+.2f} meV")
-        print(f"  (= 2 * V_TT = {2 * V_TT_eci:+.2f} meV)")
+        print(f"  (= 2 * |V_TT| = {2 * abs(V_TT_eci):+.2f} meV)")
+        # Internal consistency check: T2 - T1 should equal 2|V_TT|
+        residual = split_t - 2 * abs(V_TT_eci)
+        if abs(residual) > 1.0:
+            print(f"  WARNING: residual {residual:+.2f} meV -- "
+                  f"check block-diagonalization assumption")
 
     if len(eci_singlets_sorted) >= 2 or len(eci_triplets_sorted) >= 2:
         print()
