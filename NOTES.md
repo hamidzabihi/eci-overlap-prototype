@@ -174,3 +174,55 @@ of this prototype. Documented as future work.
 The FEM-level calculation is physically meaningful and matches the
 reference: it demonstrates the fragment-based excitonic coupling
 that is the central physics of ECI.
+
+## Known limitation: GS-LE coupling in the two-fragment ECI demo
+
+The two-fragment ECI demo (`examples/two_fragment_eci_demo.py`) works
+at the **FEM level of theory** by default: fragment site energies,
+cross-fragment Coulomb and exchange integrals on the diagonal, and
+the Frenkel coupling between the two local excitations. It reproduces
+the direct CIS excitonic splitting with a mean absolute deviation of
+~140 meV, in line with the FEM benchmarks reported in the ECI paper
+(Table 2 of JCTC 2024).
+
+Enabling the GS-LE coupling (`--include-gs-le`) produces unphysical
+values (~0.47 Ha to ~35 Ha for the GS-LE matrix element, versus a
+physical scale of tens of meV). The GS-LE term is therefore disabled
+by default.
+
+**Root cause analysis:**
+
+The GS-LE coupling, per eq. 9 of the ECI paper, is:
+
+    H_{GS-LE_A} = sum_{G != A} Y_{0, a_A | 0, 0}^{AG}
+
+where Y = J - K, and the J integral involves contributions from
+electron-nuclear attraction and nuclear-nuclear repulsion that
+partially cancel the electron-electron Coulomb term.
+
+Our implementation of the nuclear contribution (Kronecker-delta
+structure of eq. 6) is correct for the DIAGONAL case
+(state-density | state-density), where all deltas are 1 and all
+nuclear terms contribute.
+
+For the off-diagonal GS-LE case, the deltas are DIFFERENT on the two
+fragments:
+  - delta(a_A, b_A) = 0 (fragment A is a transition)
+  - delta(a_B, b_B) = 1 (fragment B is in its GS)
+
+This means the nuclear terms should contribute only PARTIALLY, and
+the resulting cancellation between J and nuclear must be computed
+with the CORRECT subset of nuclear terms.
+
+Our two attempts to implement this partial cancellation (both
+documented in the development history) produced wildly wrong
+magnitudes and signs. The correct derivation requires carefully
+following the AO-basis algebra from eqs. 6-7 in the paper, which
+is beyond the scope of this prototype.
+
+**This is exactly the kind of subtle detail that the ECI2GAME
+project would need to get right.** The FEM-level result is
+physically meaningful and matches the paper's benchmarks; the
+GS-LE extension is documented as future work.
+
+**Reproducer:** `python examples/two_fragment_eci_demo.py --include-gs-le`

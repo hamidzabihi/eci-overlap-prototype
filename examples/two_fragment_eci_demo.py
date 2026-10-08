@@ -111,6 +111,9 @@ def main():
     ap.add_argument("--basis", default="6-31G")
     ap.add_argument("--nstates", type=int, default=2,
                     help="number of states per fragment (including GS)")
+    ap.add_argument("--include-gs-le", action="store_true",
+                    help="Include GS-LE coupling (ECIS level). "
+                         "Default is FEM level (no GS-LE).")
     args = ap.parse_args()
 
     print("=" * 66)
@@ -120,6 +123,7 @@ def main():
     print(f"  separation:     {args.separation:.2f} Angstrom")
     print(f"  basis:          {args.basis}")
     print(f"  states/fragment: {args.nstates} (GS + {args.nstates - 1} excited)")
+    print(f"  ECI level:      {'ECIS (with GS-LE)' if args.include_gs_le else 'FEM (no GS-LE)'}")
     print()
 
     # --- Step 1: fragment CIS calculations
@@ -143,7 +147,11 @@ def main():
 
     # --- Step 3: assemble the ECI Hamiltonian
     print("Assembling ECI Hamiltonian ...")
-    H, labels = build_two_fragment_eci(frag_A, frag_B, verbose=True)
+    H, labels = build_two_fragment_eci(
+        frag_A, frag_B,
+        include_gs_le=args.include_gs_le,
+        verbose=True,
+    )
 
     print()
     print("ECI Hamiltonian (Ha):")

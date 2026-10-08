@@ -255,22 +255,27 @@ def cross_fragment_K(
     return float(K)
 
 
-def nuclear_interaction(
+def nuclear_terms(
     mol_F: gto.Mole,
     mol_G: gto.Mole,
     rho_F: np.ndarray,
     rho_G: np.ndarray,
-) -> float:
-    """Inter-fragment nuclear-electron and nuclear-nuclear interactions.
+) -> tuple[float, float, float]:
+    """Return the three nuclear contributions separately.
 
-    The energy contribution from:
-      - electron density of F with nuclei of G
-      - electron density of G with nuclei of F
-      - nuclei-nuclei repulsion
+    Returns
+    -------
+    (V_ne_FG, V_ne_GF, V_nn)
+        V_ne_FG: electron density of F with nuclei of G
+        V_ne_GF: electron density of G with nuclei of F
+        V_nn:    nuclear-nuclear repulsion
 
-    This is the non-2-electron part of the Y integral (see eq. 6 in paper).
+    Each piece is included in the GFT J integral only when the
+    corresponding Kronecker-delta condition is satisfied:
+        V_ne_FG requires delta(a_F, b_F) = 1
+        V_ne_GF requires delta(a_G, b_G) = 1
+        V_nn    requires delta(a_F, b_F) * delta(a_G, b_G) = 1
     """
-    # Electron density of F interacts with nuclei of G
     V_ne_FG = 0.0
     for g in range(mol_G.natm):
         Z_g = mol_G.atom_charge(g)
@@ -279,7 +284,6 @@ def nuclear_interaction(
         V_F_at_G = mol_F.intor("int1e_rinv")
         V_ne_FG -= Z_g * np.einsum("ij,ij->", rho_F, V_F_at_G)
 
-    # Electron density of G interacts with nuclei of F
     V_ne_GF = 0.0
     for f in range(mol_F.natm):
         Z_f = mol_F.atom_charge(f)
@@ -288,7 +292,6 @@ def nuclear_interaction(
         V_G_at_F = mol_G.intor("int1e_rinv")
         V_ne_GF -= Z_f * np.einsum("ij,ij->", rho_G, V_G_at_F)
 
-    # Nuclear-nuclear repulsion
     V_nn = 0.0
     for f in range(mol_F.natm):
         for g in range(mol_G.natm):
@@ -298,7 +301,7 @@ def nuclear_interaction(
             R_g = mol_G.atom_coord(g)
             V_nn += Z_f * Z_g / np.linalg.norm(R_f - R_g)
 
-    return V_ne_FG + V_ne_GF + V_nn
+    return V_ne_FG, V_ne_GF, V_nn
 
 
 # ---------------------------------------------------------------- ECI assembly
@@ -438,11 +441,22 @@ def build_two_fragment_eci(
             np.einsum("ij,ijkl,kl->", rho_F_ab_alpha, eri_ABAB_ikjl_perm, rho_G_cd_alpha, optimize=True)
             + np.einsum("ij,ijkl,kl->", rho_F_ab_beta, eri_ABAB_ikjl_perm, rho_G_cd_beta, optimize=True)
         )
-        # Nuclear terms only when both fragments are in "same state" pairs
+        # Nuclear terms follow the Kronecker-delta structure of eq. 6 of
+        # the ECI paper (JCTC 2024). For a transition-density pair
+        # (a_F != b_F), the corresponding delta is zero, and the nuclear
+        # terms are absent.
+        #
+        # NOTE: This simple implementation is correct for the diagonal
+        # (state-density | state-density) case. It produces a physical
+        # Frenkel coupling for (transition | state) pairs, but the GS-LE
+        # coupling requires a more careful derivation of the AO-basis
+        # formula. See NOTES.md for details.
+        V_ne_FG, V_ne_GF, V_nn = nuclear_terms(
+            fragment_A.mol, fragment_B.mol, rho_F_ab, rho_G_cd
+        )
+        nuc = 0.0
         if (not is_transition_F) and (not is_transition_G):
-            nuc = nuclear_interaction(fragment_A.mol, fragment_B.mol, rho_F_ab, rho_G_cd)
-        else:
-            nuc = 0.0
+            nuc = V_ne_FG + V_ne_GF + V_nn
         return float(J - K + nuc)
 
     # Diagonal H_00 = E_A^GS + E_B^GS + Y_00|00
