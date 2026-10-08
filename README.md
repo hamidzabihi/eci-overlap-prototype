@@ -1,40 +1,68 @@
 # eci-overlap-prototype
 
-A prototype exploring the path from **ECI** (Excitonic Configuration
-Interaction) to **SHARC's surface-hopping NAMD**, by building the
-scaffolding around the interface gaps.
+A prototype of the **ECI → wfoverlap → SHARC-NAMD** overlap pipeline.
 
-## What this is
+This repo implements the chain of operations needed to compute the
+**state-overlap matrix S_ij** for an ECI wavefunction at two geometries,
+which is the quantity SHARC's surface-hopping NAMD machinery needs at
+every time step.
 
-Not a full implementation of the ECI-NAMD interface. It is a
-**status analysis** backed by working code: it traces the pipeline
-from an ECI wavefunction to the SHARC `QM.out` format, verifies each
-existing piece against real SHARC data, and enumerates exactly what
-is missing.
+## What this actually does
 
-The missing pieces map 1:1 onto the **ECI2GAME** postdoc deliverables
-(energy gradients, wavefunction overlaps, spin-orbit couplings).
+Given two geometries of a molecular system:
+
+1. Compute CIS wavefunctions via PySCF (or read them from a SHARC child
+   QM interface that produces the same files).
+2. Write the wavefunctions in SHARC's native format (`mos`, `dets`,
+   `AO_overl.mixed`).
+3. Run SHARC's `wfoverlap.x` on them → fragment-state overlap matrices.
+4. Compose fragment overlaps into ESD overlaps (`O_det`).
+5. Contract with the spin-adaptation matrix `U` and the ECI coefficient
+   matrix `C` → ECI state overlaps `S_ij`.
+
+Steps 2–5 are implemented here and tested. Step 1 is provided as a
+PySCF-based demo so the pipeline runs without external QM licenses.
 
 ## Quick start
 
-    pytest -v                              # 29 tests
-    python examples/gap_map_demo.py        # QM.out section gap map
-    python examples/pipeline_report.py     # pipeline stage status
+    pip install numpy pytest pyscf
+    pytest -v                                       # 65 tests
+    python examples/build_fragment_overlap.py       # fragment overlap demo
+    python examples/full_eci_pipeline_demo.py       # full pipeline demo
+    python examples/gap_map_demo.py                 # QM.out section gap map
+    python examples/pipeline_report.py              # pipeline stage status
 
 ## Requirements
 
 - Python 3.10+, NumPy, pytest
+- PySCF for the demo (not required for the module tests)
 - A clone of `sharc-md/sharc4` at `~/sharc4` with a compiled
   `wfoverlap.x` (see `BUILDING.md`)
 
 ## Layout
 
     src/
-      run_wfoverlap.py      # Python wrapper around the SHARC wfoverlap binary
-      qmout_parser.py       # parser for SHARC's QM.out + gap map
-      esd_to_dets.py        # ECI ESD -> wfoverlap detstring mapper
+      run_wfoverlap.py      # wrapper around the SHARC wfoverlap binary
+      qmout_parser.py       # parser for SHARC's QM.out format + gap map
+      esd_to_dets.py        # ESD -> detstring mapper
+      fragment_overlap.py   # fragment file writers + wfoverlap invocation
+      esd_overlap.py        # ESD overlap product formula
+      state_overlap.py      # ECSF contraction + state overlaps
       pipeline_status.py    # pipeline stage reporter
-    tests/                  # 29 tests, all passing
+    tests/                  # 65 tests, all passing
     examples/               # runnable demos
     BUILDING.md             # how to build wfoverlap with gfortran
-    NOTES.md                # technical writeup
+    NOTES.md                # technical writeup of the pipeline and gaps
+
+## Status
+
+| Stage | Status |
+|---|---|
+| Fragment overlap primitive | ✅ implemented and tested |
+| ESD overlap product formula | ✅ implemented and tested |
+| ECSF contraction / state overlaps | ✅ implemented and tested |
+| Full ECI integration into `SHARC_ECI.py` | ❌ not yet done |
+| Energy gradients | ❌ not done |
+| Spin-orbit couplings | ❌ not done |
+
+The remaining stages map directly onto the ECI2GAME postdoc deliverables.
