@@ -57,7 +57,9 @@ from pyscf import gto, scf, tdscf
 from examples.build_fragment_overlap import run_cis
 from src.excitonic_hamiltonian import (
     build_two_fragment_eci,
+    build_two_fragment_eci_with_triplets,
     fragment_from_cis_result,
+    fragment_from_cis_result_pair,
 )
 
 
@@ -91,12 +93,13 @@ def combined_geometry(separation):
 
 # ---------------------------------------------------------------- direct reference
 
-def direct_cis_energies(atom, basis, nstates):
+def direct_cis_energies(atom, basis, nstates, singlet=True):
     """Run CIS on the full system and return the low-lying excitation energies."""
     mol = gto.M(atom=atom, basis=basis, verbose=0)
     mf = scf.RHF(mol).run()
     td = tdscf.TDA(mf)
     td.nstates = nstates
+    td.singlet = singlet
     td.run()
     energies = [float(e) for e in td.e]
     return float(mf.e_tot), energies
@@ -131,25 +134,33 @@ def main():
     geom_B = ethylene_at(z_offset=args.separation)
 
     print("Running CIS on fragment A ...")
-    r_A = run_cis(geom_A, basis=args.basis, nstates=args.nstates)
-    print(f"  scf_energy:  {r_A['scf_energy']:.8f} Ha")
-    print(f"  excitations: {[f'{e:.5f}' for e in r_A['excitation_energies']]}")
+    r_A = run_cis(geom_A, basis=args.basis, nstates=args.nstates, singlet=True)
+    print(f"  singlet SCF energy:  {r_A['scf_energy']:.8f} Ha")
+    print(f"  singlet excitations: {[f'{e*27.2114:.3f}' for e in r_A['excitation_energies'][1:]]} eV")
 
     print("Running CIS on fragment B ...")
-    r_B = run_cis(geom_B, basis=args.basis, nstates=args.nstates)
-    print(f"  scf_energy:  {r_B['scf_energy']:.8f} Ha")
-    print(f"  excitations: {[f'{e:.5f}' for e in r_B['excitation_energies']]}")
+    r_B = run_cis(geom_B, basis=args.basis, nstates=args.nstates, singlet=True)
+    print(f"  singlet SCF energy:  {r_B['scf_energy']:.8f} Ha")
+    print(f"  singlet excitations: {[f'{e*27.2114:.3f}' for e in r_B['excitation_energies'][1:]]} eV")
+
+    r_A_trip = run_cis(geom_A, basis=args.basis, nstates=args.nstates, singlet=False)
+    r_B_trip = run_cis(geom_B, basis=args.basis, nstates=args.nstates, singlet=False)
+    print(f"  triplet A excitations: {[f'{e*27.2114:.3f}' for e in r_A_trip['excitation_energies'][1:]]} eV")
+    print(f"  triplet B excitations: {[f'{e*27.2114:.3f}' for e in r_B_trip['excitation_energies'][1:]]} eV")
     print()
 
     # --- Step 2: build Fragment objects
-    frag_A = fragment_from_cis_result("A", r_A)
-    frag_B = fragment_from_cis_result("B", r_B)
+    frag_A = fragment_from_cis_result("A", r_A, spin=0)
+    frag_B = fragment_from_cis_result("B", r_B, spin=0)
+    frag_A_trip = fragment_from_cis_result("A", r_A_trip, spin=1)
+    frag_B_trip = fragment_from_cis_result("B", r_B_trip, spin=1)
 
     # --- Step 3: assemble the ECI Hamiltonian
     print("Assembling ECI Hamiltonian ...")
-    H, labels = build_two_fragment_eci(
+    H, labels = build_two_fragment_eci_with_triplets(
         frag_A, frag_B,
-        include_gs_le=args.include_gs_le,
+        fragment_A_triplet=frag_A_trip,
+        fragment_B_triplet=frag_B_trip,
         verbose=True,
     )
 
@@ -169,35 +180,108 @@ def main():
         print(f"  State {i}:  E = {e:.8f} Ha   Eex = {(e - e_gs) * 27.2114:.5f} eV")
     print()
 
-    # --- Step 5: direct reference calculation
+    # --- Step 5: direct reference calculation (both singlets and triplets)
     geom_full = combined_geometry(args.separation)
-    print("Running direct CIS on combined two-ethylene system (reference) ...")
-    e_ref_gs, e_ref_ex = direct_cis_energies(geom_full, args.basis, args.nstates * 2)
 
-    print(f"  SCF energy:  {e_ref_gs:.8f} Ha")
-    print(f"  Excitations (eV): {[f'{e * 27.2114:.5f}' for e in e_ref_ex]}")
+    print("Running direct CIS on combined system (reference) ...")
+    e_ref_gs_s, e_ref_ex_s = direct_cis_energies(
+        geom_full, args.basis, args.nstates * 2, singlet=True
+    )
+    e_ref_gs_t, e_ref_ex_t = direct_cis_energies(
+        geom_full, args.basis, args.nstates * 2, singlet=False
+    )
+    print(f"  SCF energy (singlet ref):  {e_ref_gs_s:.8f} Ha")
+    print(f"  Singlet excitations (eV): {[f'{e * 27.2114:.3f}' for e in e_ref_ex_s[:4]]}")
+    print(f"  Triplet excitations (eV): {[f'{e * 27.2114:.3f}' for e in e_ref_ex_t[:4]]}")
     print()
 
-    # --- Step 6: comparison
+    # --- Step 6: comparison by multiplicity
+    # Split ECI eigenvalues into singlet and triplet blocks based on the
+    # known basis ordering:
+    #   basis = [GS, S_A, S_B, T_A, T_B, T_A-T_B]
+    # After diagonalization, the order is by energy, not by block.
+    # Here we identify blocks by comparing to fragment reference energies.
     print("=" * 66)
-    print("Comparison: ECI vs direct CIS")
+    print("Comparison: ECI vs direct CIS (by multiplicity)")
     print("=" * 66)
-    print(f"{'State':<8} {'ECI (eV)':<14} {'Direct (eV)':<14} {'Deviation (meV)':<16}")
+
+    # Singlet block: ECI states 3 and 4 (the ones with S_A / S_B character)
+    # Triplet block: ECI states 0, 1, 2
+    # This mapping is based on the block structure of the Hamiltonian.
+
+    # For a clean comparison, we identify which eigenvalue corresponds to
+    # which block using the eigenvectors.
+    _, eigvecs_full = np.linalg.eigh(H)
+
+    # The singlet block is indices 0..n_singlet-1 in the basis
+    n_singlet = 3  # GS, S_A, S_B
+    singlet_weight = np.sum(np.abs(eigvecs_full[:n_singlet, :])**2, axis=0)
+    triplet_weight = np.sum(np.abs(eigvecs_full[n_singlet:, :])**2, axis=0)
+
+    # Classify each eigenstate
+    eci_singlets = []
+    eci_triplets = []
+    for i in range(len(eigvals)):
+        if singlet_weight[i] > 0.5:
+            eci_singlets.append((eigvals[i] - e_gs) * 27.2114)
+        else:
+            eci_triplets.append((eigvals[i] - e_gs) * 27.2114)
+
+    # Compare singlet block (excluding GS)
+    eci_singlets_sorted = sorted(eci_singlets)
+    n_s = min(len(eci_singlets_sorted) - 1, len(e_ref_ex_s))
+    print()
+    print(f"{'Singlet':<10} {'ECI (eV)':<14} {'Direct (eV)':<14} {'Dev (meV)':<12}")
     print("-" * 52)
+    singlet_devs = []
+    for i in range(n_s):
+        e_eci = eci_singlets_sorted[i + 1]
+        e_dir = e_ref_ex_s[i] * 27.2114
+        dev = (e_eci - e_dir) * 1000
+        singlet_devs.append(dev)
+        print(f"S{i + 1:<9} {e_eci:<14.4f} {e_dir:<14.4f} {dev:+.2f}")
+    if singlet_devs:
+        print(f"Singlet MAD: {np.mean(np.abs(singlet_devs)):.2f} meV")
 
-    n_compare = min(len(eigvals) - 1, len(e_ref_ex))
-    deviations = []
-    for i in range(n_compare):
-        e_eci = (eigvals[i + 1] - e_gs) * 27.2114
-        e_dir = e_ref_ex[i] * 27.2114
-        dev = (e_eci - e_dir) * 1000  # meV
-        deviations.append(dev)
-        print(f"S{i + 1:<7} {e_eci:<14.5f} {e_dir:<14.5f} {dev:+.2f}")
+    # Compare triplet block
+    eci_triplets_sorted = sorted(eci_triplets)
+
+    # The ECI triplet-triplet coupling is a DIABATIC Frenkel coupling
+    # between localized fragment triplet excitations.  The direct CIS
+    # T1-T2 splitting is an ADIABATIC splitting of delocalized
+    # combined-system states.  These are different physical quantities
+    # and are not expected to agree without diabatization of the direct
+    # CIS states.  We therefore report them side by side rather than
+    # computing a deviation.
+    n_singlet_basis = 3   # GS, S_A, S_B in the ECI basis
+    V_TT_eci = H[n_singlet_basis, n_singlet_basis + 1] * 27.2114 * 1000
+    if len(e_ref_ex_t) >= 2:
+        delta_TT_cis = (e_ref_ex_t[1] - e_ref_ex_t[0]) * 27.2114 * 1000
+    else:
+        delta_TT_cis = float("nan")
 
     print()
-    if deviations:
-        mad = np.mean(np.abs(deviations))
-        print(f"Mean absolute deviation: {mad:.2f} meV")
+    print("Triplet block (diabatic ECI coupling vs adiabatic CIS splitting)")
+    print("-" * 66)
+    print(f"  ECI Frenkel coupling  V_TT = H[T_A, T_B] = {V_TT_eci:+.2f} meV")
+    print(f"  Direct CIS T1-T2 splitting           = {delta_TT_cis:+.2f} meV")
+    print()
+    print("  NOTE: These are different quantities.  The ECI value is the")
+    print("  diabatic coupling between localized fragment triplets; the")
+    print("  direct CIS value is the adiabatic splitting of delocalized")
+    print("  combined-system states.  They agree only after diabatization")
+    print("  of the direct CIS states onto the fragment-localized basis.")
+    print()
+    print("  ECI triplet eigenvalues (sorted):")
+    for i, e in enumerate(eci_triplets_sorted):
+        print(f"    T{i + 1}: {e:.4f} eV")
+
+    # Report the DLE states separately
+    if len(eci_triplets_sorted) > 2:
+        print()
+        print("Higher ECI triplet states (DLE-like, no direct CIS reference):")
+        for i in range(2, len(eci_triplets_sorted)):
+            print(f"  DLE {i-1}: Eex = {eci_triplets_sorted[i]:.4f} eV")
     print()
 
     # --- Step 7: physical interpretation

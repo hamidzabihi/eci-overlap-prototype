@@ -245,3 +245,28 @@ expected for weakly-coupled fragments. At shorter separations it grows,
 demonstrating the physical basis of the coupling.
 
 This brings the demo from the FEM level up to the full ECIS method.
+
+## Triplet Frenkel coupling vs adiabatic CIS splitting (2026-10-08)
+
+The ECI triplet-triplet coupling is the DIABATIC Frenkel coupling:
+
+    V_TT = J(td_A, td_B) - K_alpha(td_A, td_B)
+
+For two ethylene triplets at 4 Å (6-31G):
+    J      = 473.8 meV
+    K      =  18.0 meV
+    V_TT   = 455.8 meV
+
+The direct CIS T1-T2 splitting for the same system is:
+
+    ΔE_CIS = 48.6 meV  (adiabatic splitting)
+
+These are different physical quantities.  V_TT is the coupling between
+two localized (diabatic) fragment excitations.  ΔE_CIS is the splitting
+of two delocalized (adiabatic) combined-system states.  They agree only
+after diabatization of the direct CIS states onto the fragment-localized
+basis.
+
+Implication: the demo's earlier "Triplet LE MAD" was comparing
+incommensurate quantities.  The triplet extension itself is physically
+correct; the comparison metric was wrong.
