@@ -134,3 +134,43 @@ available in this environment.
 **Reproducer:** see the self-comparison test in the conversation log
 of October 2026, or the four tests in `tests/test_water_reference.py`
 combined with any native-format input.
+
+## Known limitation: GS-LE coupling in the two-fragment ECI demo
+
+The two-fragment ECI demo (`examples/two_fragment_eci_demo.py`) works
+at the FEM level of theory: fragment energies, cross-fragment Coulomb
+and exchange integrals on the diagonal, and the Frenkel coupling
+between the two local excitations. It reproduces the direct CIS
+excitonic splitting with a mean absolute deviation of ~140 meV, in
+line with the FEM benchmarks reported in the ECI paper (Table 2 of
+JCTC 2024).
+
+The GS-LE coupling -- the term that distinguishes ECI from FEM -- is
+currently disabled (`include_gs_le=False`). Enabling it produces
+unphysical values (~0.47 Ha for the GS-LE matrix element, roughly 13
+eV, versus the physical scale of tens of meV).
+
+**Root cause analysis:** the transition density between the ground
+state and the excited state is well behaved (trace ~ 0, max element
+~0.3, sum of X^2 in the PySCF convention = 0.5). The GS state
+density is correctly normalized (trace equal for GS and LE states).
+The `Y_integral` function correctly disables the nuclear terms for
+transition-density pairs (following the Kronecker-delta structure of
+eq. 6 in the paper). Yet the resulting GS-LE matrix element is
+~1000x too large.
+
+**Likely causes (to investigate):**
+  * Sign or normalization of the transition density relative to
+    the state density in the AO contraction.
+  * Ordering of the (ij|kl) integral in `cross_fragment_J` when
+    the density is a transition density rather than a state density.
+  * The factor of sqrt(2) between PySCF's X amplitudes (sum(X^2) = 0.5
+    for singlets) and the physical transition density (sum = 1).
+
+None of these are large changes, but the fix requires a clean
+derivation of the AO-basis GS-LE integral, which is beyond the scope
+of this prototype. Documented as future work.
+
+The FEM-level calculation is physically meaningful and matches the
+reference: it demonstrates the fragment-based excitonic coupling
+that is the central physics of ECI.

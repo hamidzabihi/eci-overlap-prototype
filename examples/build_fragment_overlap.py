@@ -139,9 +139,19 @@ def run_cis(atom, basis="6-31G", nstates=3, verbose=False):
     for d, det in enumerate(detstrings):
         coefs[:, d] = det_to_coefs[det]
 
+    # Collect excitation energies from PySCF's TDA result (in Hartree)
+    excitation_energies = [0.0]  # GS has zero excitation energy
+    for istate in range(n_excited):
+        e_ex = float(td.e[istate])
+        excitation_energies.append(e_ex)
+
     return {
         "mol": mol,
         "mo_coeff": mf.mo_coeff,
+        "mo_energy": mf.mo_energy,
+        "mo_occ": mf.mo_occ,
+        "scf_energy": float(mf.e_tot),
+        "excitation_energies": excitation_energies,
         "detstrings": detstrings,
         "coefs": coefs,
         "nmo": nmo,
