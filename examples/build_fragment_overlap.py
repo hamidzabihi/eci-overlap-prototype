@@ -56,7 +56,7 @@ def water_geometry_2(displacement=0.05):
 
 # ---------------------------------------------------------------- PySCF CIS
 
-def run_cis(atom, basis="6-31G", nstates=3, verbose=False):
+def run_cis(atom, basis="6-31G", nstates=3, verbose=False, singlet=True):
     """Run RHF + TDA/CIS on the given geometry.
 
     Returns a dict with the MO coefficients, a common list of detstrings,
@@ -81,6 +81,7 @@ def run_cis(atom, basis="6-31G", nstates=3, verbose=False):
     # TDA: excitation amplitudes X[istate][i, a]
     td = tdscf.TDA(mf)
     td.nstates = max(1, nstates - 1)
+    td.singlet = singlet
     td.run()
 
     # PySCF's td.xy structure (as of the version in use here) is:
@@ -159,6 +160,7 @@ def run_cis(atom, basis="6-31G", nstates=3, verbose=False):
         "nvir": nvir,
         "nao": nao,
         "nstate": nstate,
+        "singlet": singlet,
     }
 
 

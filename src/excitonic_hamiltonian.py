@@ -663,6 +663,16 @@ def fragment_from_cis_result(label, cis_result, *, include_all_states=True, spin
         rho_ex = cis_state_density(mo_coeff, mo_occ, X, state="total")
         td = cis_transition_density(mo_coeff, mo_occ, X)
 
+        # Fix the sign gauge of the transition density: the CIS eigenvector
+        # sign is arbitrary, so we choose the convention that the
+        # largest-magnitude element is positive.  This makes the
+        # inter-fragment Frenkel coupling independent of numerical sign
+        # flips in the fragment CIS eigenvectors.
+        if td is not None and np.any(np.abs(td) > 1e-12):
+            i_max, j_max = np.unravel_index(np.argmax(np.abs(td)), td.shape)
+            if td[i_max, j_max] < 0:
+                td = -td
+
 
         exc_energies = cis_result.get("excitation_energies", [0.0] * nstate)
         e_ex = exc_energies[s] if s < len(exc_energies) else 0.0
