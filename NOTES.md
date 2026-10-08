@@ -270,3 +270,72 @@ basis.
 Implication: the demo's earlier "Triplet LE MAD" was comparing
 incommensurate quantities.  The triplet extension itself is physically
 correct; the comparison metric was wrong.
+
+## Triplet extension: validation summary (2026-10-08)
+
+The triplet ECI extension is complete.  Final state:
+
+### Implementation
+
+- `build_two_fragment_eci_with_triplets` builds a 6x6 Hamiltonian:
+  [GS, S_A, S_B | T_A, T_B, T_A-T_B].  Singlet and triplet blocks
+  are decoupled by construction (nonrelativistic Hamiltonian).
+
+- `K_AB` computes the true alpha-only exchange for the M_S=+1
+  triplet:
+
+      K = sum_ijkl rho_F_alpha[i,j] * rho_G_alpha[k,l] * (ik|jl)
+
+  using the permuted two-electron integrals, NOT the (ij|kl)
+  integrals used for the Coulomb term.
+
+- K is applied ONLY to transition-transition pairs (the Frenkel
+  mechanism).  State-state diagonals use J-only, which is the
+  correct leading behavior for the diagonal site energies.
+
+- Fragment transition densities are sign-gauge-fixed (largest
+  element set positive) so that the inter-fragment coupling is
+  independent of arbitrary CIS eigenvector signs.
+
+### Validation at 4 Angstrom (6-31G, ethylene dimer)
+
+    V_TT (ECI Frenkel coupling)   = 455.81 meV
+    K_alpha (exchange)            =  17.98 meV
+    J (Coulomb)                   = 473.79 meV
+    T1 (ECI)                      =   3.6387 eV
+    T1 (direct CIS)               =   3.5605 eV
+    T1 deviation                  =   +78 meV
+    Singlet MAD (S1, S2)          = 140 meV
+    Internal check: T2 - T1 = 2|V_TT| holds to < 1 meV
+
+### Separation scan (4-10 Angstrom)
+
+    sep    V_TT (meV)   |V_TT| ratio   S2-S1 (meV)   T2-T1 (meV)
+    4.0    +455.81      --            +543.52       +911.62
+    5.0    -244.05      0.535         +316.48       +488.12
+    6.0    +142.16      0.583         +192.49       +284.31
+    8.0     +60.37      0.425          +85.24       +120.74
+    10.0    +31.01      0.514          +44.61        +62.03
+
+The decay ratios match the dipole-dipole prediction (R1/R2)^3
+to within a few percent.  The triplet Frenkel coupling is a
+textbook 1/R^3 interaction across the entire valid range.
+
+### Domain of validity
+
+The ECI assumes strongly orthogonal fragments (no inter-fragment
+density overlap).  For ethylene, this holds for separations >=
+~3.5 Angstrom.  At 3.0 Angstrom the diagnostic T2-T1 residual
+jumps to +157 meV, signaling breakdown of the block-diagonal
+S/T separation.  The demo now warns when separation < 3.5 A.
+
+### What was NOT validated
+
+The ECI triplet coupling is a DIABATIC Frenkel coupling between
+localized fragment excitations.  The direct CIS T1-T2 splitting
+is an ADIABATIC splitting of delocalized combined-system states.
+These are different observables and are not expected to agree
+without diabatization of the direct CIS states.  A true
+apples-to-apples validation requires localizing the combined-
+system MOs and re-expressing the TDA eigenvectors in the
+fragment-localized basis -- proposed as the next milestone.
