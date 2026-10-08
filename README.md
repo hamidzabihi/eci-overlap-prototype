@@ -58,7 +58,7 @@ The repo has two complementary goals:
 | Diabatization / state tracking | ✅ tested |
 | ECI Hamiltonian from fragments | ✅ tested |
 | **FEM-level ECI** | ✅ matches direct CIS (~140 meV MAD) |
-| **ECIS-level ECI (with GS-LE)** | ✅ GS-LE coupling validated |
+| **ECIS-level ECI (with GS-LE)** | ❌ FEM level only; GS-LE not yet validated |
 | Full SHARC_ECI.py integration | ❌ future work |
 | Energy gradients | ❌ future work |
 | Spin-orbit couplings | ❌ future work |
