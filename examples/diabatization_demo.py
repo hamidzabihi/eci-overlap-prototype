@@ -122,7 +122,7 @@ def main():
         print(S_list[k].real)
 
     # Run the assignment
-    assignments = track_states(S_list, threshold=0.3)
+    assignments = track_states(S_list)
 
     print()
     print("=" * 64)
