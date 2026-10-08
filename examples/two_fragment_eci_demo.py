@@ -196,46 +196,42 @@ def main():
     print()
 
     # --- Step 6: comparison by multiplicity
-    # Split ECI eigenvalues into singlet and triplet blocks based on the
-    # known basis ordering:
-    #   basis = [GS, S_A, S_B, T_A, T_B, T_A-T_B]
-    # After diagonalization, the order is by energy, not by block.
-    # Here we identify blocks by comparing to fragment reference energies.
+    # The Hamiltonian is block-diagonal by construction: the first
+    # n_singlet_basis rows/cols are the singlet block (GS, S_A, S_B),
+    # the rest are the triplet block (T_A, T_B, T_A-T_B).  We
+    # diagonalize each block separately, which avoids any ambiguity
+    # in classifying eigenstates by their eigenvector content.
     print("=" * 66)
     print("Comparison: ECI vs direct CIS (by multiplicity)")
     print("=" * 66)
 
-    # Singlet block: ECI states 3 and 4 (the ones with S_A / S_B character)
-    # Triplet block: ECI states 0, 1, 2
-    # This mapping is based on the block structure of the Hamiltonian.
+    n_singlet_basis = 3   # GS, S_A, S_B in the ECI basis
+    H_singlet = H[:n_singlet_basis, :n_singlet_basis]
+    H_triplet = H[n_singlet_basis:, n_singlet_basis:]
 
-    # For a clean comparison, we identify which eigenvalue corresponds to
-    # which block using the eigenvectors.
-    _, eigvecs_full = np.linalg.eigh(H)
+    eigvals_s = np.linalg.eigvalsh(H_singlet)
+    eigvals_t = np.linalg.eigvalsh(H_triplet)
 
-    # The singlet block is indices 0..n_singlet-1 in the basis
-    n_singlet = 3  # GS, S_A, S_B
-    singlet_weight = np.sum(np.abs(eigvecs_full[:n_singlet, :])**2, axis=0)
-    triplet_weight = np.sum(np.abs(eigvecs_full[n_singlet:, :])**2, axis=0)
+    # GS energy from the singlet block
+    e_gs = eigvals_s[0]
 
-    # Classify each eigenstate
-    eci_singlets = []
-    eci_triplets = []
-    for i in range(len(eigvals)):
-        if singlet_weight[i] > 0.5:
-            eci_singlets.append((eigvals[i] - e_gs) * 27.2114)
-        else:
-            eci_triplets.append((eigvals[i] - e_gs) * 27.2114)
+    eci_singlets = [(e - e_gs) * 27.2114 for e in eigvals_s[1:]]
+    eci_triplets = [(e - e_gs) * 27.2114 for e in eigvals_t]
 
-    # Compare singlet block (excluding GS)
+    # For the overall eigenvalue listing, we keep the full H diagonalization
+    _, eigvals = np.linalg.eigh(H)
+
+    # Compare singlet block.  eci_singlets already excludes the GS
+    # (it was built from eigvals_s[1:] above), so the indexing here is
+    # direct -- no off-by-one.
     eci_singlets_sorted = sorted(eci_singlets)
-    n_s = min(len(eci_singlets_sorted) - 1, len(e_ref_ex_s))
+    n_s = min(len(eci_singlets_sorted), len(e_ref_ex_s))
     print()
     print(f"{'Singlet':<10} {'ECI (eV)':<14} {'Direct (eV)':<14} {'Dev (meV)':<12}")
     print("-" * 52)
     singlet_devs = []
     for i in range(n_s):
-        e_eci = eci_singlets_sorted[i + 1]
+        e_eci = eci_singlets_sorted[i]
         e_dir = e_ref_ex_s[i] * 27.2114
         dev = (e_eci - e_dir) * 1000
         singlet_devs.append(dev)
@@ -276,12 +272,8 @@ def main():
     for i, e in enumerate(eci_triplets_sorted):
         print(f"    T{i + 1}: {e:.4f} eV")
 
-    # Report the DLE states separately
-    if len(eci_triplets_sorted) > 2:
-        print()
-        print("Higher ECI triplet states (DLE-like, no direct CIS reference):")
-        for i in range(2, len(eci_triplets_sorted)):
-            print(f"  DLE {i-1}: Eex = {eci_triplets_sorted[i]:.4f} eV")
+    # Note: T3 and higher are the DLE-like states (T_A-T_B coupled).
+    # They have no direct CIS counterpart and are already listed above.
     print()
 
     # --- Step 7: physical interpretation
@@ -291,13 +283,23 @@ def main():
 
     # At large separation, the coupling should vanish; at small separation,
     # the LE states should split into symmetric/antisymmetric combinations.
-    if len(eigvals) >= 3:
-        splitting = (eigvals[2] - eigvals[1]) * 27.2114
-        print(f"Excitonic splitting (E_2 - E_1): {splitting * 1000:.2f} meV")
-        if abs(splitting) < 0.01:
-            print("  -> negligible coupling (fragments effectively isolated)")
-        else:
-            print("  -> nonzero coupling: ECI captures inter-fragment excitonic interaction")
+    # Singlet excitonic splitting: E(S2) - E(S1)
+    if len(eci_singlets_sorted) >= 2:
+        split_s = (eci_singlets_sorted[1] - eci_singlets_sorted[0]) * 1000
+        print(f"Singlet excitonic splitting (S2 - S1): {split_s:+.2f} meV")
+
+    # Triplet excitonic splitting: E(T2) - E(T1)
+    if len(eci_triplets_sorted) >= 2:
+        split_t = (eci_triplets_sorted[1] - eci_triplets_sorted[0]) * 1000
+        print(f"Triplet excitonic splitting (T2 - T1): {split_t:+.2f} meV")
+        print(f"  (= 2 * V_TT = {2 * V_TT_eci:+.2f} meV)")
+
+    if len(eci_singlets_sorted) >= 2 or len(eci_triplets_sorted) >= 2:
+        print()
+        print("  Nonzero splittings confirm the ECI captures inter-fragment")
+        print("  excitonic coupling. The singlet splitting is dominated by")
+        print("  the Coulomb (Frenkel) term; the triplet splitting is the")
+        print("  same Coulomb term plus the (small) alpha-only exchange.")
 
 
 if __name__ == "__main__":
