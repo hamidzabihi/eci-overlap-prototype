@@ -34,12 +34,16 @@ def parse_overlap_matrix(stdout, renormalized=False):
     if start is None:
         raise ValueError(f"Could not find '{target}' in output")
     rows = []
+    started = False
     for line in lines[start + 2:]:
         s = line.strip()
         if s.startswith("<PsiA"):
+            started = True
             body = s.split("|", 1)[1]
             rows.append([float(x) for x in body.split()])
-        elif s.startswith("="):
+        elif started and s:
+            # First <PsiA block has ended. wfoverlap prints three such blocks
+            # (raw, renormalized, orthonormalized); we only want the first.
             break
     if not rows:
         raise ValueError("No rows found after header")
