@@ -58,9 +58,9 @@ The repo has two complementary goals:
 | Wavefunction phase correction | ✅ tested |
 | Diabatization / state tracking | ✅ tested |
 | ECI Hamiltonian from fragments | ✅ tested |
-| **FEM-level ECI (singlet block)** | ✅ matches direct CIS (~140 meV MAD) |
-| **Triplet ECI extension** | ✅ validated (T1 dev 78 meV, V_TT ~ 1/R³) |
-| **ECIS-level ECI (with GS-LE)** | ❌ FEM level only; GS-LE not yet validated |
+| FEM-level ECI (singlet block) | ✅ matches direct CIS (~140 meV MAD) |
+| Triplet ECI extension | ✅ validated (T1 dev 78 meV, V_TT ~ 1/R³) |
+| ECIS-level ECI (with GS-LE) | ❌ FEM level only; GS-LE not yet validated |
 | Full SHARC_ECI.py integration | ❌ future work |
 | Energy gradients | ❌ future work |
 | Spin-orbit couplings | ❌ future work |
@@ -78,12 +78,22 @@ Key results at 4 Å (ethylene dimer, 6-31G):
 
 | Quantity | Value |
 |---|---|
-| Triplet Frenkel coupling `V_TT` | **455.81 meV** |
+| Triplet Frenkel coupling `V_TT` | 455.81 meV |
 | α-only exchange `K` | 17.98 meV |
-| T1 (ECI) vs T1 (direct CIS) | 3.6387 eV vs 3.5605 eV (dev **+78 meV**) |
+| T1 (ECI) vs T1 (direct CIS) | 3.6387 eV vs 3.5605 eV (dev +78 meV) |
 | Singlet MAD (S1, S2) | 140 meV |
-| `2|V_TT| = T2 − T1` consistency | holds to < 1 meV |
-| Separation scan (4–10 Å) | `|V_TT|` decays as **1/R³** |
+| `2\|V_TT\| = T2 − T1` consistency | holds to < 1 meV |
+
+Separation scan (4–10 Å): `|V_TT|` decays as 1/R³, matching
+dipole-dipole theory.
+
+| sep (Å) | V_TT (meV) |
+|---|---|
+| 4.0 | +455.81 |
+| 5.0 | −244.05 |
+| 6.0 | +142.16 |
+| 8.0 | +60.37 |
+| 10.0 | +31.01 |
 
 **Important distinction:** the ECI `V_TT` is a **diabatic** Frenkel
 coupling between localized fragment triplet excitations. The direct
