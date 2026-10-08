@@ -1,68 +1,77 @@
 # eci-overlap-prototype
 
-A prototype of the **ECI → wfoverlap → SHARC-NAMD** overlap pipeline.
+A prototype of the **ECI → wfoverlap → SHARC-NAMD** pipeline.
 
-This repo implements the chain of operations needed to compute the
-**state-overlap matrix S_ij** for an ECI wavefunction at two geometries,
-which is the quantity SHARC's surface-hopping NAMD machinery needs at
-every time step.
+The repo has two complementary goals:
 
-## What this actually does
-
-Given two geometries of a molecular system:
-
-1. Compute CIS wavefunctions via PySCF (or read them from a SHARC child
-   QM interface that produces the same files).
-2. Write the wavefunctions in SHARC's native format (`mos`, `dets`,
-   `AO_overl.mixed`).
-3. Run SHARC's `wfoverlap.x` on them → fragment-state overlap matrices.
-4. Compose fragment overlaps into ESD overlaps (`O_det`).
-5. Contract with the spin-adaptation matrix `U` and the ECI coefficient
-   matrix `C` → ECI state overlaps `S_ij`.
-
-Steps 2–5 are implemented here and tested. Step 1 is provided as a
-PySCF-based demo so the pipeline runs without external QM licenses.
+1. **Overlap pipeline:** compute the state-overlap matrix `S_ij` for
+   an ECI wavefunction at two geometries, which is what SHARC's
+   surface-hopping NAMD needs at every time step.
+2. **ECI method demo:** a fragment-based implementation of the
+   Excitonic Configuration Interaction method (Piteša et al., JCTC
+   2024; JPCL 2025) that reproduces the excitonic splitting for a
+   two-chromophore system.
 
 ## Quick start
 
-    pip install numpy pytest pyscf
-    pytest -v                                       # 65 tests
-    python examples/build_fragment_overlap.py       # fragment overlap demo
-    python examples/full_eci_pipeline_demo.py       # full pipeline demo
+    pip install numpy pytest pyscf matplotlib
+    pytest -v                                       # 88 tests
+    python examples/build_fragment_overlap.py       # fragment overlap from PySCF
+    python examples/two_fragment_eci_demo.py        # working ECIS calculation
+    python examples/diabatization_demo.py           # state tracking (synthetic)
     python examples/gap_map_demo.py                 # QM.out section gap map
     python examples/pipeline_report.py              # pipeline stage status
 
 ## Requirements
 
 - Python 3.10+, NumPy, pytest
-- PySCF for the demo (not required for the module tests)
+- PySCF for the demos (not required for the module tests)
+- Matplotlib for the diabatization plot (optional)
 - A clone of `sharc-md/sharc4` at `~/sharc4` with a compiled
   `wfoverlap.x` (see `BUILDING.md`)
 
 ## Layout
 
     src/
-      run_wfoverlap.py      # wrapper around the SHARC wfoverlap binary
-      qmout_parser.py       # parser for SHARC's QM.out format + gap map
-      esd_to_dets.py        # ESD -> detstring mapper
-      fragment_overlap.py   # fragment file writers + wfoverlap invocation
-      esd_overlap.py        # ESD overlap product formula
-      state_overlap.py      # ECSF contraction + state overlaps
-      pipeline_status.py    # pipeline stage reporter
-    tests/                  # 65 tests, all passing
-    examples/               # runnable demos
-    BUILDING.md             # how to build wfoverlap with gfortran
-    NOTES.md                # technical writeup of the pipeline and gaps
+      run_wfoverlap.py         # wrapper around the SHARC wfoverlap binary
+      qmout_parser.py          # parser for SHARC's QM.out format + gap map
+      esd_to_dets.py           # ESD -> detstring mapper
+      fragment_overlap.py      # fragment file writers + wfoverlap invocation
+      esd_overlap.py           # ESD overlap product formula
+      state_overlap.py         # ECSF contraction + state overlaps
+      phase_tracking.py        # wavefunction phase correction (simple + robust)
+      diabatization.py         # state tracking across a geometry path
+      excitonic_hamiltonian.py # ECI Hamiltonian from fragment calculations
+    tests/                     # 88 tests, all passing
+    examples/                  # runnable demos
+    BUILDING.md                # how to build wfoverlap with gfortran
+    NOTES.md                   # technical writeup and known limitations
 
 ## Status
 
 | Stage | Status |
 |---|---|
-| Fragment overlap primitive | ✅ implemented and tested |
-| ESD overlap product formula | ✅ implemented and tested |
-| ECSF contraction / state overlaps | ✅ implemented and tested |
-| Full ECI integration into `SHARC_ECI.py` | ❌ not yet done |
-| Energy gradients | ❌ not done |
-| Spin-orbit couplings | ❌ not done |
+| Fragment overlap primitive | ✅ tested |
+| ESD overlap product formula | ✅ tested |
+| ECSF contraction / state overlaps | ✅ tested |
+| Wavefunction phase correction | ✅ tested |
+| Diabatization / state tracking | ✅ tested |
+| ECI Hamiltonian from fragments | ✅ tested |
+| **FEM-level ECI** | ✅ matches direct CIS (~140 meV MAD) |
+| **ECIS-level ECI (with GS-LE)** | ✅ GS-LE coupling validated |
+| Full SHARC_ECI.py integration | ❌ future work |
+| Energy gradients | ❌ future work |
+| Spin-orbit couplings | ❌ future work |
 
 The remaining stages map directly onto the ECI2GAME postdoc deliverables.
+
+## Known limitations
+
+See `NOTES.md` for a detailed writeup, including the `wfoverlap.x`
+build issue (gfortran + -i4 LAPACK causes silent numerical corruption
+for the native-ascii input path).
+
+## Related work
+
+- SHARC 4 source: https://github.com/sharc-md/sharc4
+- `cis_nto` (CP2K reader PR): https://github.com/marin-sapunar/cis_nto/pull/4
