@@ -97,3 +97,40 @@ See `BUILDING.md` for the gfortran build instructions for `wfoverlap.x`.
     python examples/full_eci_pipeline_demo.py      # full pipeline demo
     python examples/gap_map_demo.py                # QM.out gap map
     python examples/pipeline_report.py             # pipeline stage status
+
+## Known limitation: `wfoverlap.x` build
+
+The `wfoverlap.x` binary in this prototype is built with `gfortran` and
+`-fdefault-integer-8`, following `BUILDING.md`. The system LAPACK and
+BLAS libraries are compiled with default 4-byte integers, which causes
+silent numerical corruption in the determinant computation for the
+native-ascii input path (`ao_read=0`, the path our prototype uses).
+
+**Symptom:** comparing identical input to `wfoverlap.x` -- same MO
+coefficients, same determinants, same AO overlap on both the `a_` and
+`b_` sides -- produces a non-identity overlap matrix with diagonal
+elements slightly above 1 (e.g. 1.0059, 1.0055). The subsequent Lowdin
+orthonormalization step then fails with `dgesvd failed`, because the
+matrix is not unitary.
+
+**Correct fix:** build `wfoverlap.x` with Intel `ifx` (the Makefile's
+default) or with LAPACK/BLAS compiled for 8-byte integers. Neither is
+available in this environment.
+
+**Impact on this prototype:**
+
+  * The `src/` modules (fragment_overlap, esd_to_dets, esd_overlap,
+    state_overlap, phase_tracking, diabatization) are validated by
+    unit tests that do not use `wfoverlap.x`.
+  * The 4 regression tests in `tests/test_water_reference.py` pass,
+    because they use the Molcas-format input path (`ao_read=1`), which
+    does not trigger the corruption.
+  * The `examples/build_fragment_overlap.py` demo runs `wfoverlap.x`
+    on our native-format input; its output should be treated as
+    provisional until the binary is rebuilt correctly.
+  * The diabatization demo uses synthetic overlaps precisely to avoid
+    depending on the affected code path.
+
+**Reproducer:** see the self-comparison test in the conversation log
+of October 2026, or the four tests in `tests/test_water_reference.py`
+combined with any native-format input.

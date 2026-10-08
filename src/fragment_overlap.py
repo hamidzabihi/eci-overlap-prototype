@@ -115,7 +115,7 @@ def write_mo_file(path: Path | str, mo_coeff: np.ndarray, unrestricted: bool = F
 
 # ------------------------------------------------------------------ dets file
 
-DETS_COEF_FMT = " %15.10E "
+DETS_COEF_FMT = " %15.10E "   # scientific, matches SHARC_GAUSSIAN.format_ci_vectors
 
 _SYMBOL_TO_INT = {"e": 0, "a": 1, "b": 2, "d": 3}
 

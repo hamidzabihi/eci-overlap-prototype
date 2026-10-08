@@ -207,10 +207,16 @@ def read_dets_file(path: Path | str) -> tuple[int, int, list[str], np.ndarray]:
         line = lines[1 + d]
         detstrings.append(line[:nmo])
         rest = line[nmo:]
-        # parse coefficients in fixed-width chunks
+        # Parse coefficients by whitespace, matching Fortran's list-directed
+        # read (READ(coefstring,*)). This is robust to any field width.
+        tokens = rest.split()
+        if len(tokens) != nstate:
+            raise ValueError(
+                f"determinant {d}: expected {nstate} coefficients, "
+                f"found {len(tokens)}"
+            )
         for s in range(nstate):
-            chunk = rest[s * 17 : (s + 1) * 17]
-            coeffs[s, d] = float(chunk)
+            coeffs[s, d] = float(tokens[s])
     return nstate, nmo, detstrings, coeffs
 
 

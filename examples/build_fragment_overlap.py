@@ -126,15 +126,12 @@ def run_cis(atom, basis="6-31G", nstates=3, verbose=False):
                 # Singlet combination, following SHARC_GAUSSIAN's sign convention:
                 # alpha excitation gets a minus sign, beta excitation a plus sign.
                 #
-                # Note on normalization: PySCF's TDA returns X amplitudes for
-                # singlet states with sum(x_ia^2) = 1/2, because only the alpha
-                # component is stored. The full singlet is a symmetric
-                # combination of alpha- and beta-excited determinants, and the
-                # CI vector we build here is normalized so that sum|coef|^2 = 1.
-                # This means we must NOT divide by sqrt(2) -- the raw X
-                # amplitudes already account for the singlet's 50/50 split.
-                det_to_coefs[det_a][1 + istate] = -x_ia
-                det_to_coefs[det_b][1 + istate] =  x_ia
+                # ACCUMULATE (not overwrite): the same detstring can arise from
+                # different (i, a) pairs in larger CIS spaces (e.g. formaldehyde),
+                # and their contributions must be summed. Overwriting loses
+                # normalization and produces coefficients with |c| > 1.
+                det_to_coefs[det_a][1 + istate] += -x_ia
+                det_to_coefs[det_b][1 + istate] +=  x_ia
 
     detstrings = sorted(det_to_coefs.keys())
     nstate = 1 + n_excited
