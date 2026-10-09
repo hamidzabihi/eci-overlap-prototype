@@ -58,8 +58,8 @@ The repo has two complementary goals:
 | Wavefunction phase correction | ✅ tested |
 | Diabatization / state tracking | ✅ tested |
 | ECI Hamiltonian from fragments | ✅ tested |
-| FEM-level ECI (singlet block) | ✅ matches direct CIS (~140 meV MAD) |
-| Triplet ECI extension | ✅ validated (T1 dev 78 meV, V_TT ~ 1/R³) |
+| FEM-level ECI (singlet block) | ✅ matches direct CIS (122 meV MAD) |
+| Triplet ECI extension | ⚠️ implemented; diabatic-vs-adiabatic caveat (see NOTES.md) |
 | ECIS-level ECI (with GS-LE) | ❌ FEM level only; GS-LE not yet validated |
 | Full SHARC_ECI.py integration | ❌ future work |
 | Energy gradients | ❌ future work |
@@ -78,29 +78,40 @@ Key results at 4 Å (ethylene dimer, 6-31G):
 
 | Quantity | Value |
 |---|---|
-| Triplet Frenkel coupling `V_TT` | 455.81 meV |
+| Triplet Frenkel coupling `V_TT` | −464.80 meV |
 | α-only exchange `K` | 17.98 meV |
-| T1 (ECI) vs T1 (direct CIS) | 3.6387 eV vs 3.5605 eV (dev +78 meV) |
-| Singlet MAD (S1, S2) | 140 meV |
+| T1 (ECI) vs T1 (direct CIS) | 3.1236 eV vs 3.5605 eV (dev −437 meV) |
+| Singlet MAD (S1, S2) | 122 meV |
 | `2\|V_TT\| = T2 − T1` consistency | holds to < 1 meV |
 
-Separation scan (4–10 Å): `|V_TT|` decays as 1/R³, matching
-dipole-dipole theory.
+Separation scan (4–10 Å, singlet Frenkel coupling — the validated
+quantity):
 
-| sep (Å) | V_TT (meV) |
+| sep (Å) | V_SS (meV) |
 |---|---|
-| 4.0 | +455.81 |
-| 5.0 | −244.05 |
-| 6.0 | +142.16 |
-| 8.0 | +60.37 |
-| 10.0 | +31.01 |
+| 4.0  | −299.71 |
+| 5.0  | −158.85 |
+| 6.0  |  −96.25 |
+| 8.0  |  −42.62 |
+| 10.0 |  −22.31 |
+
+Log-log fit over 4–10 Å: `|V_SS| ~ R^(−2.84)`, approaching the
+`R^(−3)` asymptote expected for dipole-dipole coupling.
 
 **Important distinction:** the ECI `V_TT` is a **diabatic** Frenkel
 coupling between localized fragment triplet excitations. The direct
 CIS T1–T2 splitting is an **adiabatic** splitting of delocalized
 combined-system states. These are different observables and agree
-only after diabatization of the direct CIS states (see
-`NEXT_MILESTONE.md`).
+only after (a) diabatization of the direct CIS states, and (b)
+verification that the fragment triplet and the combined-system
+triplet share the same orbital character.
+
+At the RHF/6-31G level, the fragment T1 of ethylene has mixed
+`pi -> pi*` and Rydberg character (`<X_singlet, X_triplet> = 0.475`),
+so (b) does not hold and the ECI `V_TT` should not be expected to
+match the direct CIS T1–T2 splitting. See `NOTES.md` for the full
+caveat and `TODO.md` for the follow-up plan (Rydberg projection or
+diabatization).
 
 The ECI assumes strongly orthogonal fragments (no inter-fragment
 density overlap). For ethylene this holds above ~3.5 Å; the demo
