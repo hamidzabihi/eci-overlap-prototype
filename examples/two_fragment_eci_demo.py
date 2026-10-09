@@ -57,9 +57,7 @@ from pyscf import gto, scf, tdscf
 from examples.build_fragment_overlap import run_cis
 from src.excitonic_hamiltonian import (
     build_two_fragment_eci,
-    build_two_fragment_eci_with_triplets,
     fragment_from_cis_result,
-    fragment_from_cis_result_pair,
 )
 
 
@@ -134,12 +132,12 @@ def main():
     geom_B = ethylene_at(z_offset=args.separation)
 
     print("Running CIS on fragment A ...")
-    r_A = run_cis(geom_A, basis=args.basis, nstates=args.nstates, singlet=True)
+    r_A = run_cis(geom_A, basis=args.basis, nstates=args.nstates)
     print(f"  singlet SCF energy:  {r_A['scf_energy']:.8f} Ha")
     print(f"  singlet excitations: {[f'{e*27.2114:.3f}' for e in r_A['excitation_energies'][1:]]} eV")
 
     print("Running CIS on fragment B ...")
-    r_B = run_cis(geom_B, basis=args.basis, nstates=args.nstates, singlet=True)
+    r_B = run_cis(geom_B, basis=args.basis, nstates=args.nstates)
     print(f"  singlet SCF energy:  {r_B['scf_energy']:.8f} Ha")
     print(f"  singlet excitations: {[f'{e*27.2114:.3f}' for e in r_B['excitation_energies'][1:]]} eV")
 
@@ -147,6 +145,7 @@ def main():
     r_B_trip = run_cis(geom_B, basis=args.basis, nstates=args.nstates, singlet=False)
     print(f"  triplet A excitations: {[f'{e*27.2114:.3f}' for e in r_A_trip['excitation_energies'][1:]]} eV")
     print(f"  triplet B excitations: {[f'{e*27.2114:.3f}' for e in r_B_trip['excitation_energies'][1:]]} eV")
+
     print()
 
     # Sanity check: ECI assumes non-overlapping fragments.  At very short
@@ -161,15 +160,18 @@ def main():
         print()
 
     # --- Step 2: build Fragment objects
-    frag_A = fragment_from_cis_result("A", r_A, spin=0)
-    frag_B = fragment_from_cis_result("B", r_B, spin=0)
+    frag_A = fragment_from_cis_result("A", r_A)
+    frag_B = fragment_from_cis_result("B", r_B)
     frag_A_trip = fragment_from_cis_result("A", r_A_trip, spin=1)
     frag_B_trip = fragment_from_cis_result("B", r_B_trip, spin=1)
 
+
     # --- Step 3: assemble the ECI Hamiltonian
     print("Assembling ECI Hamiltonian ...")
-    H, labels = build_two_fragment_eci_with_triplets(
+    H, labels = build_two_fragment_eci(
         frag_A, frag_B,
+        include_gs_le=args.include_gs_le,
+        include_triplets=True,
         fragment_A_triplet=frag_A_trip,
         fragment_B_triplet=frag_B_trip,
         verbose=True,
@@ -218,16 +220,25 @@ def main():
 
     n_singlet_basis = 3   # GS, S_A, S_B in the ECI basis
     H_singlet = H[:n_singlet_basis, :n_singlet_basis]
-    H_triplet = H[n_singlet_basis:, n_singlet_basis:]
 
     eigvals_s = np.linalg.eigvalsh(H_singlet)
-    eigvals_t = np.linalg.eigvalsh(H_triplet)
 
     # GS energy from the singlet block
     e_gs = eigvals_s[0]
 
     eci_singlets = [(e - e_gs) * 27.2114 for e in eigvals_s[1:]]
-    eci_triplets = [(e - e_gs) * 27.2114 for e in eigvals_t]
+
+    # Triplet block: only present if the ECI Hamiltonian was built with
+    # triplet basis states.  In the singlet-only run, H has shape
+    # (n_singlet_basis, n_singlet_basis) and the triplet block is absent.
+    if H.shape[0] > n_singlet_basis:
+        H_triplet = H[n_singlet_basis:, n_singlet_basis:]
+        eigvals_t = np.linalg.eigvalsh(H_triplet)
+        eci_triplets = [(e - e_gs) * 27.2114 for e in eigvals_t]
+        has_triplets = True
+    else:
+        eci_triplets = []
+        has_triplets = False
 
     # For the overall eigenvalue listing, we keep the full H diagonalization
     _, eigvals = np.linalg.eigh(H)
@@ -253,39 +264,53 @@ def main():
     # Compare triplet block
     eci_triplets_sorted = sorted(eci_triplets)
 
-    # The ECI triplet-triplet coupling is a DIABATIC Frenkel coupling
-    # between localized fragment triplet excitations.  The direct CIS
-    # T1-T2 splitting is an ADIABATIC splitting of delocalized
-    # combined-system states.  These are different physical quantities
-    # and are not expected to agree without diabatization of the direct
-    # CIS states.  We therefore report them side by side rather than
-    # computing a deviation.
-    n_singlet_basis = 3   # GS, S_A, S_B in the ECI basis
-    V_TT_eci = H[n_singlet_basis, n_singlet_basis + 1] * 27.2114 * 1000
-    if len(e_ref_ex_t) >= 2:
-        delta_TT_cis = (e_ref_ex_t[1] - e_ref_ex_t[0]) * 27.2114 * 1000
+    if not has_triplets:
+        print()
+        print("Triplet block: not present in this ECI Hamiltonian")
+        print("(singlet-only run; rebuild with include_triplets=True to add it).")
+        print()
+        V_TT_eci = 0.0
+        eci_triplets_sorted = []
     else:
-        delta_TT_cis = float("nan")
+      # The ECI triplet-triplet coupling is a DIABATIC Frenkel coupling
+      # between localized fragment triplet excitations.  The direct CIS
+      # T1-T2 splitting is an ADIABATIC splitting of delocalized
+      # combined-system states.  These are different physical quantities
+      # and are not expected to agree without diabatization of the direct
+      # CIS states.  We therefore report them side by side rather than
+      # computing a deviation.
+      n_singlet_basis = 3   # GS, S_A, S_B in the ECI basis
+      V_TT_eci = H[n_singlet_basis, n_singlet_basis + 1] * 27.2114 * 1000
+      if len(e_ref_ex_t) >= 2:
+          delta_TT_cis = (e_ref_ex_t[1] - e_ref_ex_t[0]) * 27.2114 * 1000
+      else:
+          delta_TT_cis = float("nan")
 
-    print()
-    print("Triplet block (diabatic ECI coupling vs adiabatic CIS splitting)")
-    print("-" * 66)
-    print(f"  ECI Frenkel coupling  V_TT = H[T_A, T_B] = {V_TT_eci:+.2f} meV")
-    print(f"  Direct CIS T1-T2 splitting           = {delta_TT_cis:+.2f} meV")
-    print()
-    print("  NOTE: These are different quantities.  The ECI value is the")
-    print("  diabatic coupling between localized fragment triplets; the")
-    print("  direct CIS value is the adiabatic splitting of delocalized")
-    print("  combined-system states.  They agree only after diabatization")
-    print("  of the direct CIS states onto the fragment-localized basis.")
-    print()
-    print("  ECI triplet eigenvalues (sorted):")
-    for i, e in enumerate(eci_triplets_sorted):
-        print(f"    T{i + 1}: {e:.4f} eV")
+      print()
+      print("Triplet block (diabatic ECI coupling vs adiabatic CIS splitting)")
+      print("-" * 66)
+      print(f"  ECI Frenkel coupling  V_TT = H[T_A, T_B] = {V_TT_eci:+.2f} meV")
+      print(f"  Direct CIS T1-T2 splitting           = {delta_TT_cis:+.2f} meV")
+      print()
+      print("  NOTE: These are different physical quantities.  The ECI")
+      print("  value is the diabatic Frenkel coupling between localized")
+      print("  fragment triplets; the direct CIS value is the adiabatic")
+      print("  splitting of delocalized combined-system states.  They")
+      print("  agree only after (a) diabatization of the direct CIS states")
+      print("  onto the fragment-localized basis, and (b) verifying that")
+      print("  the fragment triplet and the combined-system triplet have")
+      print("  the same orbital character.  At the RHF/6-31G level, the")
+      print("  fragment T1 has mixed pi->pi* and Rydberg character, so")
+      print("  (b) fails and the two numbers should not be expected to")
+      print("  match.")
+      print()
+      print("  ECI triplet eigenvalues (sorted):")
+      for i, e in enumerate(eci_triplets_sorted):
+          print(f"    T{i + 1}: {e:.4f} eV")
 
-    # Note: T3 and higher are the DLE-like states (T_A-T_B coupled).
-    # They have no direct CIS counterpart and are already listed above.
-    print()
+      # Note: T3 and higher are the DLE-like states (T_A-T_B coupled).
+      # They have no direct CIS counterpart and are already listed above.
+      print()
 
     # --- Step 7: physical interpretation
     print("=" * 66)
@@ -304,7 +329,6 @@ def main():
         split_t = (eci_triplets_sorted[1] - eci_triplets_sorted[0]) * 1000
         print(f"Triplet excitonic splitting (T2 - T1): {split_t:+.2f} meV")
         print(f"  (= 2 * |V_TT| = {2 * abs(V_TT_eci):+.2f} meV)")
-        # Internal consistency check: T2 - T1 should equal 2|V_TT|
         residual = split_t - 2 * abs(V_TT_eci)
         if abs(residual) > 1.0:
             print(f"  WARNING: residual {residual:+.2f} meV -- "
@@ -312,10 +336,14 @@ def main():
 
     if len(eci_singlets_sorted) >= 2 or len(eci_triplets_sorted) >= 2:
         print()
-        print("  Nonzero splittings confirm the ECI captures inter-fragment")
-        print("  excitonic coupling. The singlet splitting is dominated by")
-        print("  the Coulomb (Frenkel) term; the triplet splitting is the")
-        print("  same Coulomb term plus the (small) alpha-only exchange.")
+        print("  Singlet splitting = 2 * (J + K)   [Frenkel mechanism]")
+        print("  Triplet splitting = 2 * (J - K)   [Frenkel mechanism]")
+        print()
+        print("  The singlet-triplet difference comes entirely from the")
+        print("  sign of the exchange (K) term.  Note that the triplet")
+        print("  block is a Frenkel coupling between fragment-localized")
+        print("  triplet states, which is not directly comparable to the")
+        print("  adiabatic CIS T1-T2 splitting.")
 
 
 if __name__ == "__main__":

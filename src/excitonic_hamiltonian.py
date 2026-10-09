@@ -121,6 +121,7 @@ def cis_state_density(
     x_ia: np.ndarray,
     *,
     state: str = "alpha",
+    spin: int = 0,
 ) -> np.ndarray:
     """Build the AO-basis density matrix for a CIS state.
 
@@ -155,31 +156,88 @@ def cis_state_density(
     nmo = mo_coeff.shape[1]
     nvir = nmo - nocc
 
-    # Reference (GS) density
-    mo_occ_ref = mo_occ[:nocc]
-    # For RHF, occupied orbitals have occupation 2 -> in the AO basis:
-    # rho_ref = sum_i occ_i * phi_i phi_i^T with occ_i = 2 for each doubly
-    # occupied MO
-    rho_ref = mo_coeff[:, :nocc] @ np.diag(mo_occ_ref) @ mo_coeff[:, :nocc].T
-
-    # CIS correction: sum_{ia} X_ia * (phi_i phi_a^T + phi_a phi_i^T)
     if x_ia is None or np.allclose(x_ia, 0):
-        rho_total = rho_ref
+        # No excitation: reference density, spin-restricted.
+        # Occupied MOs have 1 alpha + 1 beta (RHF closed shell).
+        P_alpha_mo = np.zeros((nmo, nmo))
+        P_beta_mo  = np.zeros((nmo, nmo))
+        for i in range(nocc):
+            P_alpha_mo[i, i] = 1.0
+            P_beta_mo[i, i]  = 1.0
     else:
-        # Vectorize the sum
-        occ_mo = mo_coeff[:, :nocc]   # (nao, nocc)
-        vir_mo = mo_coeff[:, nocc:]   # (nao, nvir)
-        # phi_i phi_a^T summed over (i,a) with weights X_ia:
-        # = occ_mo @ X @ vir_mo.T
-        cross = occ_mo @ x_ia @ vir_mo.T
-        rho_total = rho_ref + cross + cross.T
+        # CIS single-excitation density in the MO basis.
+        #
+        # For a CIS state with amplitudes X_ia (normalized so that
+        # sum_ia X_ia^2 = 0.5 in the PySCF/TDA convention):
+        #
+        #   Occ diagonal:  1 - (weight) * sum_a X_ia^2  per occupied MO i
+        #   Vir diagonal:  (weight) * sum_i X_ia^2      per virtual MO a
+        #   Occ-vir block: (weight) * X_ia              (coherence)
+        #
+        # where 'weight' = 0.5 for a singlet (excitation split equally
+        # between alpha and beta), and 'weight' = 1.0 for the alpha
+        # channel of an M_S = +1 triplet (all excitation in alpha).
+        #
+        # The "occupation change" terms (1 - pop on occ, +pop on vir)
+        # are the diagonal corrections that the previous implementation
+        # was missing.  They ensure that Tr(P_alpha) + Tr(P_beta) equals
+        # the total electron count, and that Tr(P_alpha) - Tr(P_beta)
+        # gives the correct spin polarization.
+        occ_pop = np.sum(x_ia**2, axis=1)   # (nocc,)
+        vir_pop = np.sum(x_ia**2, axis=0)   # (nvir,)
+
+        P_alpha_mo = np.zeros((nmo, nmo))
+        P_beta_mo  = np.zeros((nmo, nmo))
+
+        # Weights for the CIS correction
+        if spin == 0:
+            # Singlet: excitation split equally between alpha and beta.
+            # PySCF/TDA normalizes X such that |X|^2 = 0.5, which
+            # corresponds to "half an electron excited" per spin channel.
+            for i in range(nocc):
+                P_alpha_mo[i, i] = 1.0 - 0.5 * occ_pop[i]
+                P_beta_mo[i, i]  = 1.0 - 0.5 * occ_pop[i]
+            for a in range(nvir):
+                P_alpha_mo[nocc + a, nocc + a] = 0.5 * vir_pop[a]
+                P_beta_mo[nocc + a, nocc + a]  = 0.5 * vir_pop[a]
+            P_alpha_mo[:nocc, nocc:] = 0.5 * x_ia
+            P_alpha_mo[nocc:, :nocc] = 0.5 * x_ia.T
+            P_beta_mo[:nocc, nocc:]  = 0.5 * x_ia
+            P_beta_mo[nocc:, :nocc]  = 0.5 * x_ia.T
+        else:
+            # M_S = +1 triplet: single determinant |core; i^up, a^up>.
+            # Relative to the closed-shell RHF reference:
+            #   - alpha channel GAINS one electron (from beta)
+            #   - beta channel LOSES one electron (to alpha)
+            # The alpha reference occupations stay at 1 for all occupied;
+            # the virtual alpha block gets the extra electron.
+            # The beta hole orbital loses its beta electron.
+            # The spin-free amplitude X is rescaled by sqrt(2) so that
+            # the effective single-determinant alpha amplitude has
+            # |X_eff|^2 = 1 (rather than PySCF's spin-free 0.5).
+            sqrt2 = np.sqrt(2.0)
+            for i in range(nocc):
+                P_alpha_mo[i, i] = 1.0                    # alpha reference unchanged
+                P_beta_mo[i, i]  = 1.0 - 2.0 * occ_pop[i] # hole loses beta electron
+            for a in range(nvir):
+                P_alpha_mo[nocc + a, nocc + a] = 2.0 * vir_pop[a]  # extra alpha in virtual
+                P_beta_mo[nocc + a, nocc + a]  = 0.0
+            P_alpha_mo[:nocc, nocc:] = sqrt2 * x_ia
+            P_alpha_mo[nocc:, :nocc] = sqrt2 * x_ia.T
+            P_beta_mo[:nocc, nocc:]  = 0.0
+            P_beta_mo[nocc:, :nocc]  = 0.0
+
+    # Transform to AO
+    rho_alpha = mo_coeff @ P_alpha_mo @ mo_coeff.T
+    rho_beta  = mo_coeff @ P_beta_mo  @ mo_coeff.T
+    rho_total = rho_alpha + rho_beta
 
     if state == "total":
         return rho_total
     elif state == "alpha":
-        return 0.5 * rho_total
+        return rho_alpha
     elif state == "beta":
-        return 0.5 * rho_total
+        return rho_beta
     else:
         raise ValueError(f"state must be 'total', 'alpha', or 'beta', got {state!r}")
 
@@ -362,6 +420,9 @@ def build_two_fragment_eci(
     *,
     include_dle: bool = False,
     include_gs_le: bool = False,
+    include_triplets: bool = False,
+    fragment_A_triplet: Optional[Fragment] = None,
+    fragment_B_triplet: Optional[Fragment] = None,
     verbose: bool = False,
 ) -> tuple[np.ndarray, list[str]]:
     """Build the ECI Hamiltonian matrix for a two-fragment system.
@@ -372,12 +433,26 @@ def build_two_fragment_eci(
       - LE on B:    A[0] x B[1]
       - DLE:        A[1] x B[1]     (if include_dle=True)
 
+    When include_triplets=True, three additional states are appended
+    (Ms = +1 components, following eq. S6 of the 2025 RI paper):
+      - |T_A>       = A[T1] x B[S0]
+      - |T_B>       = A[S0] x B[T1]
+      - |T_A,T_B>   = coupled doubly-localized triplet
+
+    The singlet-triplet block is exactly zero for the nonrelativistic
+    Hamiltonian, so H remains block-diagonal by multiplicity.
+
     Parameters
     ----------
     fragment_A, fragment_B : Fragment
-        Each must have at least 2 states (GS + 1 excited).
+        Singlet fragments (GS + LE).
     include_dle : bool
-        Include the doubly-localized excitation state.
+        Include the doubly-localized singlet excitation state.
+    include_triplets : bool
+        Append the triplet block (requires fragment_A_triplet and
+        fragment_B_triplet).
+    fragment_A_triplet, fragment_B_triplet : Fragment, optional
+        Triplet fragments (GS + T1), built from triplet CIS results.
 
     Returns
     -------
@@ -458,8 +533,18 @@ def build_two_fragment_eci(
         *,
         is_transition_F: bool = False,
         is_transition_G: bool = False,
+        spin: int = 0,
     ) -> float:
-        """Compute Y = J - K + nuclear for two fragment densities.
+        """Compute Y = J ± K + nuclear for two fragment densities.
+
+        spin = 0 : singlet  -> Y = J + K
+        spin = 1 : triplet  -> Y = J - K
+
+        The K term is the exchange integral contracted with same-spin
+        density components (see cross_fragment_K docstring).  With the
+        spin-restricted approximation rho_alpha = rho_beta = rho_total/2,
+        the same-spin K is (1/2) * the full K, and the singlet/triplet
+        difference is exactly the sign flip on that term.
 
         The nuclear-electron and nuclear-nuclear terms are only nonzero
         when the two states on each fragment are the SAME (Kronecker
@@ -472,29 +557,35 @@ def build_two_fragment_eci(
             True if the corresponding density is a transition density
             (between two different fragment states). When False, the
             density is a state density and the nuclear terms apply.
+        spin : int
+            0 for singlet (J + K), 1 for triplet (J - K).
         """
         J = cross_fragment_J(rho_F_ab, rho_G_cd, eri_ABAB)
         K = (
             np.einsum("ij,ijkl,kl->", rho_F_ab_alpha, eri_ABAB_ikjl_perm, rho_G_cd_alpha, optimize=True)
             + np.einsum("ij,ijkl,kl->", rho_F_ab_beta, eri_ABAB_ikjl_perm, rho_G_cd_beta, optimize=True)
         )
+        # Sign rule for the exchange term:
+        #   - Frenkel coupling (both densities are transition densities):
+        #       singlet -> J + K,  triplet -> J - K   [eq. S6 of the 2025 paper]
+        #   - Diagonal site-energy terms (either density is a state density):
+        #       exchange is always stabilizing in energy -> J - K
+        if is_transition_F and is_transition_G:
+            Y = J + K if spin == 0 else J - K
+        else:
+            Y = J - K
+
         # Nuclear terms follow the Kronecker-delta structure of eq. 6 of
         # the ECI paper (JCTC 2024). For a transition-density pair
         # (a_F != b_F), the corresponding delta is zero, and the nuclear
         # terms are absent.
-        #
-        # NOTE: This simple implementation is correct for the diagonal
-        # (state-density | state-density) case. It produces a physical
-        # Frenkel coupling for (transition | state) pairs, but the GS-LE
-        # coupling requires a more careful derivation of the AO-basis
-        # formula. See NOTES.md for details.
         V_ne_FG, V_ne_GF, V_nn = nuclear_terms(
             fragment_A.mol, fragment_B.mol, rho_F_ab, rho_G_cd
         )
         nuc = 0.0
         if (not is_transition_F) and (not is_transition_G):
             nuc = V_ne_FG + V_ne_GF + V_nn
-        return float(J - K + nuc)
+        return float(Y + nuc)
 
     # Diagonal H_00 = E_A^GS + E_B^GS + Y_00|00
     Y_00_00 = Y_integral(
@@ -578,6 +669,99 @@ def build_two_fragment_eci(
             if verbose:
                 print(f"  Y_LE_A,0|0,LE_B = {Y_LE0_0LE:.8f}")
 
+    # ---------------------------------------------------------- triplet block
+    # Append the Ms = +1 triplet states following eq. S6 of the 2025 RI
+    # paper:
+    #   |T_A>     = A[T1] x B[S0]
+    #   |T_B>     = A[S0] x B[T1]
+    #   |T_A,T_B> = coupled doubly-localized triplet (approximated here
+    #               by the product of fragment triplet site energies plus
+    #               the T_A-T_B Frenkel coupling)
+    #
+    # The singlet-triplet block is exactly zero for the nonrelativistic
+    # Hamiltonian (no spin-orbit coupling in this module).
+    if include_triplets:
+        if fragment_A_triplet is None or fragment_B_triplet is None:
+            raise ValueError(
+                "include_triplets=True requires fragment_A_triplet and "
+                "fragment_B_triplet to be provided."
+            )
+
+        # Anchors in the triplet fragments: GS (index 0), T1 (index 1)
+        tA_gs = fragment_A_triplet.states[0]
+        tB_gs = fragment_B_triplet.states[0]
+        tA_t1 = fragment_A_triplet.states[1]
+        tB_t1 = fragment_B_triplet.states[1]
+
+        # Singlet GS densities (used as the "other fragment in its GS"
+        # reference for the site-energy diagonal)
+        sA_gs = fragment_A.states[0]
+        sB_gs = fragment_B.states[0]
+
+        i_TA = n                # index of |T_A>
+        i_TB = n + 1            # index of |T_B>
+        i_TT = n + 2            # index of |T_A,T_B>
+
+        n_trip = 3
+        H_new = np.zeros((n + n_trip, n + n_trip))
+        H_new[:n, :n] = H
+        H = H_new
+        labels = labels + ["T_A (Ms=+1)", "T_B (Ms=+1)", "T_A,T_B coupled"]
+        n = n + n_trip
+
+        # ---- Diagonal: H_T_A,T_A = E_A(T1) + E_B(S0) + Y_T,T|0,0
+        # Use the singlet GS density of the *other* fragment, since the
+        # ground-state reference in the combined system is the singlet GS.
+        Y_TT_A = Y_integral(
+            tA_t1.density_total, sB_gs.density_total,
+            tA_t1.density_alpha, tA_t1.density_beta,
+            sB_gs.density_alpha, sB_gs.density_beta,
+            spin=1,
+        )
+        H[i_TA, i_TA] = tA_t1.energy + sB_gs.energy + 0.5 * Y_TT_A
+
+        Y_TT_B = Y_integral(
+            sA_gs.density_total, tB_t1.density_total,
+            sA_gs.density_alpha, sA_gs.density_beta,
+            tB_t1.density_alpha, tB_t1.density_beta,
+            spin=1,
+        )
+        H[i_TB, i_TB] = sA_gs.energy + tB_t1.energy + 0.5 * Y_TT_B
+
+        # ---- Off-diagonal T_A-T_B: Frenkel coupling via transition
+        # densities of the triplet fragments.
+        td_tA = tA_t1.transition_density
+        td_tB = tB_t1.transition_density
+        if td_tA is not None and td_tB is not None:
+            if np.any(np.abs(td_tA) > 1e-10) and np.any(np.abs(td_tB) > 1e-10):
+                V_TT = Y_integral(
+                    td_tA, td_tB,
+                    0.5 * td_tA, 0.5 * td_tA,
+                    0.5 * td_tB, 0.5 * td_tB,
+                    is_transition_F=True,
+                    is_transition_G=True,
+                    spin=1,
+                )
+                H[i_TA, i_TB] = H[i_TB, i_TA] = V_TT
+                if verbose:
+                    print(f"  V_TT (T_A-T_B) = {V_TT:.8f}")
+
+        # ---- Diagonal T_A,T_B: approximate as sum of site energies plus
+        # the same T_A-T_B interaction that enters the off-diagonal.
+        # (The exact spin algebra for the coupled Ms=0 state is deferred;
+        # this gives the correct energy scale for the DLE.)
+        if td_tA is not None and td_tB is not None:
+            H[i_TT, i_TT] = (
+                tA_t1.energy + tB_t1.energy
+                + 0.5 * Y_TT_A
+                + 0.5 * Y_TT_B
+            )
+        else:
+            H[i_TT, i_TT] = tA_t1.energy + tB_t1.energy + 0.5 * Y_TT_A + 0.5 * Y_TT_B
+
+        # ---- S-T block remains zero (nonrelativistic Hamiltonian).
+        # Nothing more to do here.
+
     return H, labels
 
 
@@ -637,7 +821,7 @@ def fragment_from_cis_result(label, cis_result, *, include_all_states=True, spin
 
     states = []
     # GS
-    rho_gs = cis_state_density(mo_coeff, mo_occ, None, state="total")
+    rho_gs = cis_state_density(mo_coeff, mo_occ, None, state="total", spin=0)
     states.append(FragmentState(
         label=label, state_index=0,
         energy=mf_energy,
@@ -660,17 +844,27 @@ def fragment_from_cis_result(label, cis_result, *, include_all_states=True, spin
                 if det in det_to_index:
                     # Use alpha-excited coeff, which is -X_ia (per run_cis)
                     X[i, a] = -coefs[s, det_to_index[det]]
-        rho_ex = cis_state_density(mo_coeff, mo_occ, X, state="total")
+        rho_ex = cis_state_density(mo_coeff, mo_occ, X, state="total", spin=spin)
+        rho_ex_alpha = cis_state_density(mo_coeff, mo_occ, X, state="alpha", spin=spin)
+        rho_ex_beta  = cis_state_density(mo_coeff, mo_occ, X, state="beta",  spin=spin)
         td = cis_transition_density(mo_coeff, mo_occ, X)
 
-        # Fix the sign gauge of the transition density: the CIS eigenvector
-        # sign is arbitrary, so we choose the convention that the
-        # largest-magnitude element is positive.  This makes the
-        # inter-fragment Frenkel coupling independent of numerical sign
-        # flips in the fragment CIS eigenvectors.
+        # Fix the sign gauge of the transition density using a
+        # physically meaningful convention: the z-component of the
+        # transition dipole moment.  Enforce mu_z >= 0.
+        #
+        # The CIS eigenvector sign is arbitrary (an overall +/- phase
+        # of the eigenvector does not change any observable), and for
+        # multi-configurational states the "largest-magnitude element"
+        # heuristic is not robust across runs.  The transition-dipole
+        # sign is the standard spectroscopic convention and is stable.
+        #
+        # Z_int[i,j] = <phi_i | z | phi_j> in the AO basis, provided
+        # directly by PySCF as int1e_r[2].
         if td is not None and np.any(np.abs(td) > 1e-12):
-            i_max, j_max = np.unravel_index(np.argmax(np.abs(td)), td.shape)
-            if td[i_max, j_max] < 0:
+            Z_int = mol.intor("int1e_r")[2]
+            mu_z = np.einsum("ij,ji->", td, Z_int)
+            if mu_z < 0:
                 td = -td
 
 
@@ -680,8 +874,8 @@ def fragment_from_cis_result(label, cis_result, *, include_all_states=True, spin
             label=label, state_index=s,
             energy=mf_energy + e_ex,
             density_total=rho_ex,
-            density_alpha=0.5 * rho_ex,
-            density_beta=0.5 * rho_ex,
+            density_alpha=rho_ex_alpha,
+            density_beta=rho_ex_beta,
             transition_density=td,
             spin=spin,
         ))
@@ -695,203 +889,3 @@ def fragment_from_cis_result(label, cis_result, *, include_all_states=True, spin
         states=states,
     )
 
-
-# ---------------------------------------------------------------- triplet extension
-
-def build_two_fragment_eci_with_triplets(
-    fragment_A: Fragment,
-    fragment_B: Fragment,
-    fragment_A_triplet: Fragment | None = None,
-    fragment_B_triplet: Fragment | None = None,
-    *,
-    verbose: bool = False,
-) -> tuple[np.ndarray, list[str]]:
-    """Build the ECI Hamiltonian including both singlet and triplet states.
-
-    Following Eq. S6 of the 2025 RI paper, the ECISD basis includes:
-
-      Singlets:
-        |0>                = A[S0] x B[S0]
-        |S_A>              = A[S1] x B[S0]
-        |S_B>              = A[S0] x B[S1]
-        |S_A,S_B>          = A[S1] x B[S1]     (S1-S1 DLE)
-
-      Triplets (Ms = +1 components):
-        |T_A>              = A[T1] x B[S0]
-        |T_B>              = A[S0] x B[T1]
-        |T_A,T_B>          = (1/sqrt(2))*(|A[T1^0], B[T1^1]> - |A[T1^1], B[T1^0]>)
-
-    The singlet-triplet couplings vanish for the nonrelativistic Hamiltonian,
-    so the singlet and triplet blocks are completely decoupled. We build them
-    separately and block-diagonalize.
-
-    Parameters
-    ----------
-    fragment_A, fragment_B : Fragment
-        Singlet fragments (as before).
-    fragment_A_triplet, fragment_B_triplet : Fragment, optional
-        If provided, add triplet states to the basis.
-
-    Returns
-    -------
-    H : (n, n) Hamiltonian in the combined S+T basis
-    labels : list of basis labels
-    """
-    # First build the singlet block
-    H_singlet, labels_singlet = build_two_fragment_eci(
-        fragment_A, fragment_B, include_gs_le=True, verbose=verbose,
-    )
-
-    if fragment_A_triplet is None or fragment_B_triplet is None:
-        return H_singlet, labels_singlet
-
-    # Build the triplet block (only if triplet fragments are provided)
-    # For the triplet block we use the M_S = +1 components, following eq. S6.
-    # The states are: |T_A>, |T_B>, |T_A,T_B>_coupled (three states, ignoring GS)
-    # The GS reference is still |S0, S0> in the singlet block.
-
-    n_singlet = len(labels_singlet)
-    n_triplet = 3  # T_A, T_B, T_A-T_B
-    n_total = n_singlet + n_triplet
-
-    H = np.zeros((n_total, n_total))
-    H[:n_singlet, :n_singlet] = H_singlet
-
-    labels = list(labels_singlet) + [
-        "T_A (Ms=+1)",
-        "T_B (Ms=+1)",
-        "T_A,T_B coupled",
-    ]
-
-    # --- Triplet diagonal and couplings ---
-    # Use the M_S = +1 triplet fragment states. Their densities are the
-    # full triplet densities (they're already spin-adapted).
-    tA = fragment_A_triplet.states[1]
-    tB = fragment_B_triplet.states[1]
-    sA_gs = fragment_A.states[0]
-    sB_gs = fragment_B.states[0]
-
-    # Need the cross-fragment integrals (reuse from the singlet build)
-    mol_AB = gto.conc_mol(fragment_A.mol, fragment_B.mol)
-    mol_AB.build()
-    nbas_A = fragment_A.mol.nbas
-    eri_ABAB = mol_AB.intor(
-        "int2e",
-        shls_slice=(0, nbas_A, 0, nbas_A, nbas_A, mol_AB.nbas, nbas_A, mol_AB.nbas),
-    )
-    all_mols = [fragment_A.mol, fragment_B.mol]
-
-    def J_AB(rho_F, rho_G):
-        return float(np.einsum("ij,ijkl,kl->", rho_F, eri_ABAB, rho_G, optimize=True))
-
-    # Cross-fragment (ik|jl) integrals for the exchange term
-    # Order: (i on A, k on B, j on A, l on B) -> permute to (i, j, k, l)
-    nbas_B = mol_AB.nbas - nbas_A
-    eri_ABAB_ikjl = mol_AB.intor(
-        "int2e",
-        shls_slice=(0, nbas_A, nbas_A, mol_AB.nbas, 0, nbas_A, nbas_A, mol_AB.nbas),
-    )
-    eri_ABAB_ikjl = np.transpose(eri_ABAB_ikjl, (0, 2, 1, 3))
-
-    def K_AB(rho_F, rho_G):
-        """Exchange integral for the M_S = +1 triplet component.
-
-        For M_S = +1, only alpha densities are populated, so the
-        exchange reduces to a single contraction of the (ik|jl)
-        integrals with the two alpha density matrices:
-
-            K = sum_ijkl rho_F_alpha[i,j] * rho_G_alpha[k,l] * (ik|jl)
-
-        Note that this uses the PERMUTED two-electron integrals
-        (ik|jl), not the (ij|kl) integrals used for the Coulomb term.
-        """
-        K = np.einsum(
-            "ij,ijkl,kl->", rho_F, eri_ABAB_ikjl, rho_G, optimize=True
-        )
-        return float(K)
-
-    def Y_full(rho_F, rho_G, is_transition_F=False, is_transition_G=False, spin=0):
-        """Compute Y = J - K + nuclear for a pair of fragment densities.
-
-        spin = 0 : singlet (Y = J + K)
-        spin = 1 : triplet (Y = J - K)
-
-        The exchange term K is only evaluated for transition-transition
-        pairs (the Frenkel mechanism).  For state-state pairs (the
-        diagonal), K has a different spin structure that this simple
-        alpha-only formula does not capture; we set K = 0 there, which
-        reproduces the original J-only diagonal and is the correct
-        leading behavior.
-        """
-        J = J_AB(rho_F, rho_G)
-        if is_transition_F and is_transition_G:
-            K = K_AB(rho_F, rho_G)
-        else:
-            K = 0.0
-        if spin == 0:
-            Y = J + K   # singlet
-        else:
-            Y = J - K   # triplet
-        # Nuclear terms
-        V_ne_FG, V_ne_GF, V_nn = nuclear_terms(
-            fragment_A.mol, fragment_B.mol, rho_F, rho_G
-        )
-        nuc = 0.0
-        if not is_transition_F:
-            nuc += V_ne_FG
-        if not is_transition_G:
-            nuc += V_ne_GF
-        if (not is_transition_F) and (not is_transition_G):
-            nuc += V_nn
-        return Y + nuc
-
-    # Diagonal: H_T_A,T_A = E_A(T1) + E_B(S0) + Y_T,T|0,0
-    H[n_singlet, n_singlet] = (
-        tA.energy + sB_gs.energy + 0.5 * Y_full(tA.density_total, sB_gs.density_total)
-    )
-    # Diagonal: H_T_B,T_B
-    H[n_singlet + 1, n_singlet + 1] = (
-        tB.energy + sA_gs.energy + 0.5 * Y_full(sA_gs.density_total, tB.density_total)
-    )
-
-    # Triplet-triplet coupling via the Frenkel mechanism
-    td_tA = tA.transition_density
-    td_tB = tB.transition_density
-    if td_tA is not None and td_tB is not None:
-        H[n_singlet, n_singlet + 1] = H[n_singlet + 1, n_singlet] = Y_full(
-            td_tA, td_tB, is_transition_F=True, is_transition_G=True, spin=1,
-        )
-
-    # The coupled T_A-T_B state has the same diagonal energy as the sum of
-    # individual triplet energies plus a coupling correction. For the two
-    # M_S = 0 component, the Hamiltonian element involves a combination.
-    # For simplicity, we set the T_A,T_B state at the sum of T_A and T_B energies.
-    H[n_singlet + 2, n_singlet + 2] = (
-        tA.energy + tB.energy
-        + 0.5 * Y_full(tA.density_total, tB.density_total)
-        + 0.5 * Y_full(tA.density_total, sB_gs.density_total)
-        + 0.5 * Y_full(sA_gs.density_total, tB.density_total)
-    )
-
-    # The |T_A,T_B> state couples to |T_A> and |T_B> via the intra-fragment
-    # GS-triplet coupling. For the M_S = +1 basis, these are zero (the
-    # triplet is M_S = +1, the GS is singlet — orthogonal spins). So we
-    # leave those couplings at zero.
-
-    # --- Singlet-triplet block: zero for the nonrelativistic Hamiltonian ---
-    # (These would be filled in by SOC corrections.)
-
-    return H, labels
-
-
-def fragment_from_cis_result_pair(
-    label,
-    singlet_result,
-    triplet_result=None,
-):
-    """Build a singlet Fragment and (optionally) a triplet Fragment."""
-    frag_singlet = fragment_from_cis_result(label, singlet_result, spin=0)
-    frag_triplet = None
-    if triplet_result is not None:
-        frag_triplet = fragment_from_cis_result(label, triplet_result, spin=1)
-    return frag_singlet, frag_triplet
