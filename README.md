@@ -1,5 +1,9 @@
 # eci-overlap-prototype
 
+[![tests](https://github.com/hamidzabihi/eci-overlap-prototype/actions/workflows/test.yml/badge.svg)](https://github.com/hamidzabihi/eci-overlap-prototype/actions/workflows/test.yml)
+
+*Reproduces and extends the ECI method of Piteša et al., [JCTC 2024](https://doi.org/10.1021/acs.jctc.4c00157) (see also [JPCL 2025](https://doi.org/10.1021/acs.jpclett.5c00065)).*
+
 A prototype of the **ECI → wfoverlap → SHARC-NAMD** pipeline.
 
 The repo has two complementary goals:
@@ -129,6 +133,27 @@ See `NOTES.md` for a detailed writeup, including:
   as unreliable).
 - The ECI is only valid for non-overlapping fragments
   (separation ≳ 3.5 Å for the ethylene demo).
+
+## Connection to ECI2GAME
+
+The ECI2GAME postdoc project at RBI targets extending the ECI method
+with the electronic-structure quantities required for SHARC surface
+hopping: energy gradients, wavefunction overlaps, and spin–orbit
+couplings. This prototype implements the overlap half of that
+pipeline end-to-end:
+
+- **Wavefunction overlaps:** `esd_overlap.py`, `state_overlap.py`, and
+  `run_wfoverlap.py` compute the full `S_ij` matrix that SHARC's NAMD
+  requires at each step.
+- **Diabatization / state tracking:** `diabatization.py` and
+  `phase_tracking.py` handle the phase-consistent state assignment
+  that overlap-based dynamics needs across a geometry path.
+- **ECI Hamiltonian:** `excitonic_hamiltonian.py` reproduces the
+  fragment-based Hamiltonian for a two-chromophore test case at the
+  FEM level.
+
+Missing pieces (also the ECI2GAME deliverables): gradients, SOCs,
+and the full `SHARC_ECI.py` integration. See `NEXT_MILESTONE.md`.
 
 ## Related work
 
