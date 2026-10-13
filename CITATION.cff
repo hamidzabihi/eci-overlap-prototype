@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+  - family-names: "Zabihi Hashjin"
+    given-names: "Hamid"
+title: "eci-overlap-prototype: A prototype of the ECI → wfoverlap → SHARC-NAMD pipeline"
+version: 0.2.0
+date-released: "2026-10-13"
+references:
+  - type: article
+    title: "Excitonic Configuration Interaction: Going Beyond the Frenkel Exciton Model"
+    authors:
+      - family-names: "Piteša"
+        given-names: "Tomislav"
+      - family-names: "Polonius"
+        given-names: "Severin"
+      - family-names: "González"
+        given-names: "Leticia"
+      - family-names: "Mai"
+        given-names: "Sebastian"
+    journal: "Journal of Chemical Theory and Computation"
+    volume: 20
+    issue: 13
+    start: 5609
+    end: 5634
+    year: 2024
+    doi: "10.1021/acs.jctc.4c00157"
