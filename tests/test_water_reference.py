@@ -13,6 +13,14 @@ WFOVERLAP = SHARC_ROOT / "bin" / "wfoverlap.x"
 REF_OUT = WATER / "REF_FILES" / "ciovl.out.1thr"
 IN_FILES = WATER / "IN_FILES"
 
+# Integration tests: require a compiled SHARC wfoverlap.x binary and
+# the SHARC test-job inputs at ~/sharc4/. Skip the whole module when
+# these are unavailable (e.g. in CI without SHARC built).
+pytestmark = pytest.mark.skipif(
+    not WFOVERLAP.is_file() or not IN_FILES.is_dir(),
+    reason="SHARC wfoverlap.x or test-job inputs not available",
+)
+
 
 @pytest.fixture
 def water_workdir(tmp_path):
