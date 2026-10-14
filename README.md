@@ -62,9 +62,9 @@ The repo has two complementary goals:
 | Wavefunction phase correction | ✅ tested |
 | Diabatization / state tracking | ✅ tested |
 | ECI Hamiltonian from fragments | ✅ tested |
-| FEM-level ECI (singlet block) | ✅ matches direct CIS (122 meV MAD) |
+| FEM-level ECI (singlet block) | ✅ matches direct CIS (3-frag: 17.6 meV, 4-frag: 19.9 meV MAD) |
 | Triplet ECI extension | ⚠️ implemented; diabatic-vs-adiabatic caveat (see NOTES.md) |
-| ECIS-level ECI (with GS-LE) | ✅ validated (symmetric dimer, machine precision) |
+| ECIS-level ECI (with GS-LE) | ✅ validated (2-fragment; N-fragment pending) |
 | Full SHARC_ECI.py integration | ❌ future work |
 | Energy gradients | ⚠️ FD prototype; force-balance validated (see docs/gradients_status.md) |
 | Spin-orbit couplings | ❌ future work |
