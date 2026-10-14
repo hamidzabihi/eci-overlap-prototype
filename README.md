@@ -66,7 +66,7 @@ The repo has two complementary goals:
 | Triplet ECI extension | ⚠️ implemented; diabatic-vs-adiabatic caveat (see NOTES.md) |
 | ECIS-level ECI (with GS-LE) | ✅ validated (symmetric dimer, machine precision) |
 | Full SHARC_ECI.py integration | ❌ future work |
-| Energy gradients | ❌ future work |
+| Energy gradients | ⚠️ FD prototype; force-balance validated (see docs/gradients_status.md) |
 | Spin-orbit couplings | ❌ future work |
 
 The remaining stages map directly onto the ECI2GAME postdoc deliverables.
