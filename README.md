@@ -135,7 +135,8 @@ See `NOTES.md` for a detailed writeup, including:
   The self-consistent EHF embedding (Brillouin's theorem check) is
   not yet implemented. See `docs/gs_le_validation.md`.
 - The ECI is only valid for non-overlapping fragments
-  (separation ≳ 3.5 Å for the ethylene demo).
+  (~5 Å for the ethylene demo; see docs/multi_fragment_validation.md
+  for the separation dependence).
 
 ## Recent milestone — GS-LE coupling validated
 
