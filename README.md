@@ -64,7 +64,7 @@ The repo has two complementary goals:
 | ECI Hamiltonian from fragments | ✅ tested |
 | FEM-level ECI (singlet block) | ✅ matches direct CIS (122 meV MAD) |
 | Triplet ECI extension | ⚠️ implemented; diabatic-vs-adiabatic caveat (see NOTES.md) |
-| ECIS-level ECI (with GS-LE) | ❌ FEM level only; GS-LE not yet validated |
+| ECIS-level ECI (with GS-LE) | ✅ validated (symmetric dimer, machine precision) |
 | Full SHARC_ECI.py integration | ❌ future work |
 | Energy gradients | ❌ future work |
 | Spin-orbit couplings | ❌ future work |
@@ -128,11 +128,27 @@ See `NOTES.md` for a detailed writeup, including:
 
 - The `wfoverlap.x` build issue (gfortran + `-i4` LAPACK causes
   silent numerical corruption for the native-ascii input path).
-- The GS-LE coupling is not yet validated; the demo runs at the FEM
-  level (`--include-gs-le` exists but the code path is documented
-  as unreliable).
+- The GS-LE coupling is now implemented correctly (V_ne + J − K,
+  eq 9 of the ECI paper) and validated on the symmetric ethylene
+  dimer: |V_0A| = |V_0B| to machine precision, 12.85 meV at 4 Å.
+  The self-consistent EHF embedding (Brillouin's theorem check) is
+  not yet implemented. See `docs/gs_le_validation.md`.
 - The ECI is only valid for non-overlapping fragments
   (separation ≳ 3.5 Å for the ethylene demo).
+
+## Recent milestone — GS-LE coupling validated
+
+The GS-LE coupling path (previously documented as unreliable) now
+implements eq 9 of the ECI paper directly: V_ne + J − K. For a
+symmetric ethylene dimer at 4 Å and 6-31G, the two coupling elements
+have equal magnitude and opposite sign to machine precision
+(12.85 meV each), and the ECI singlet MAD against direct CIS is
+~120 meV — consistent with the paper's ECIS + FDA behavior for
+weakly coupled systems. Two tests in `tests/test_gs_le_symmetry.py`
+guard the fix. Full details in `docs/gs_le_validation.md`.
+
+Open items: EHF embedding (Brillouin's theorem check), strong-coupling
+regime (paper's MgG4^2+ case), and multi-state-per-fragment extension.
 
 ## Connection to ECI2GAME
 
