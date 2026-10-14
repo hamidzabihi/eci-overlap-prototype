@@ -62,7 +62,7 @@ The repo has two complementary goals:
 | Wavefunction phase correction | ✅ tested |
 | Diabatization / state tracking | ✅ tested |
 | ECI Hamiltonian from fragments | ✅ tested |
-| FEM-level ECI (singlet block) | ✅ matches direct CIS (3-frag: 17.6 meV, 4-frag: 19.9 meV MAD) |
+| FEM-level ECI (singlet block) | ✅ matches direct CIS (2-frag: 13 meV, 3-frag: 18 meV, 4-frag: 20 meV MAD at 5 Å; see separation scan below) |
 | Triplet ECI extension | ⚠️ implemented; diabatic-vs-adiabatic caveat (see NOTES.md) |
 | ECIS-level ECI (with GS-LE) | ✅ validated (2-fragment; N-fragment pending) |
 | Full SHARC_ECI.py integration | ❌ future work |
@@ -118,8 +118,9 @@ caveat and `TODO.md` for the follow-up plan (Rydberg projection or
 diabatization).
 
 The ECI assumes strongly orthogonal fragments (no inter-fragment
-density overlap). For ethylene this holds above ~3.5 Å; the demo
-warns below that threshold. See `NOTES.md` for the full validation
+density overlap). For ethylene, the MAD against direct CIS degrades
+rapidly below ~5 Å (see docs/multi_fragment_validation.md); the demo
+warns when the separation falls below this threshold. See `NOTES.md` for the full validation
 summary.
 
 ## Known limitations
