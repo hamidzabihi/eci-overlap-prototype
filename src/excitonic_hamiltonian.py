@@ -485,6 +485,20 @@ def build_two_fragment_eci(
     eri_ABAB_ikjl_perm = np.transpose(eri_ABAB_ikjl, (0, 2, 1, 3))
     # Now eri_ABAB_ikjl_perm[i, j, k, l] = (ik|jl)
 
+    # B-first counterparts, needed for the second GS-LE call
+    # (B transition density coupled to A ground-state density).
+    eri_BABA = mol_AB.intor(
+        "int2e",
+        shls_slice=(nbas_A, mol_AB.nbas, nbas_A, mol_AB.nbas,
+                    0, nbas_A, 0, nbas_A),
+    )
+    eri_BABA_ikjl = mol_AB.intor(
+        "int2e",
+        shls_slice=(nbas_A, mol_AB.nbas, 0, nbas_A,
+                    nbas_A, mol_AB.nbas, 0, nbas_A),
+    )
+    eri_BABA_ikjl_perm = np.transpose(eri_BABA_ikjl, (0, 2, 1, 3))
+
     # Get fragment state energies and densities
     sA_gs = fragment_A.states[0]
     sB_gs = fragment_B.states[0]
@@ -622,37 +636,73 @@ def build_two_fragment_eci(
         if verbose:
             print(f"  Y_00|LE_B,LE_B = {Y_00_LELE:.8f}")
 
-    # Off-diagonal GS-LE coupling using the inter-fragment one-electron
-    # operator h^FG = T + V_ne, following the implementation in SHARC's
-    # lib/ECI.py (calculate_V1mat).
+    # ------------------------------------------------------------------
+    # Off-diagonal GS-LE coupling, following ECI paper eq 9 with the
+    # Kronecker-delta structure of eq 6 for the fragment in its GS.
     #
-    #   H_{GS-LE_A} = (1/2) * Tr( h^{AB} * P^{AB} )
+    #   H_{GS-LE_A} = V_ne_AB + J_AB - K_AB
     #
-    # where P^{AB} = rho^{trans,A} @ S_AB @ rho^{GS,B} is the mixed
-    # two-fragment density matrix.
-    all_mols = [fragment_A.mol, fragment_B.mol]
-    S_AB = gto.mole.intor_cross("int1e_ovlp", fragment_A.mol, fragment_B.mol)
+    # where the J and K integrals must use ERIs ordered with the
+    # transition-density fragment's AOs in the first two slots:
+    #   For V1_0A: td_A is first, so use eri_ABAB / eri_ABAB_ikjl_perm.
+    #   For V1_0B: td_B is first, so use eri_BABA / eri_BABA_ikjl_perm.
+    # ------------------------------------------------------------------
+    def gs_le_coupling(td_F, rho_G, frag_F, frag_G, eri_J, eri_K):
+        """GS-LE coupling for fragment F locally excited, G in its GS.
+
+        Parameters
+        ----------
+        td_F  : (nao_F, nao_F) transition density GS->LE of fragment F
+        rho_G : (nao_G, nao_G) total ground-state density of fragment G
+        frag_F, frag_G : Fragment objects
+        eri_J : two-electron integrals (ij|kl) with (i,j)=F, (k,l)=G
+        eri_K : two-electron integrals ordered (i,k,j,l) with i,j=F; k,l=G
+        """
+        # --- V_ne_FG: nuclear attraction, nuclei of G only ---
+        V_ne_FG = 0.0
+        for g in range(frag_G.mol.natm):
+            Z_g = frag_G.mol.atom_charge(g)
+            R_g = frag_G.mol.atom_coord(g)
+            frag_F.mol.set_rinv_orig(R_g)
+            V_rinv_F = frag_F.mol.intor("int1e_rinv")
+            V_ne_FG -= Z_g * np.einsum("ij,ij->", td_F, V_rinv_F)
+
+        # --- J_FG: Coulomb between td_F and rho_G ---
+        J_FG = cross_fragment_J(td_F, rho_G, eri_J)
+
+        # --- K_FG: exchange, spin-integrated for a closed-shell
+        # singlet transition density (eq 49 of the SI). ---
+        K_FG = 0.5 * np.einsum(
+            "ij,ijkl,kl->", td_F, eri_K, rho_G, optimize=True,
+        )
+
+        return V_ne_FG + J_FG - K_FG
 
     if n > 1 and include_gs_le:
         td_A = transition_density_for_state(fragment_A, 1)
         if np.any(np.abs(td_A) > 1e-10):
-            hFG = one_electron_operator(fragment_A.mol, fragment_B.mol, all_mols)
-            P_mixed = td_A @ S_AB @ sB_gs.density_total
-            V1_0A = 0.5 * np.einsum("ij,ji->", hFG, P_mixed)
+            V1_0A = gs_le_coupling(
+                td_A, sB_gs.density_total,
+                fragment_A, fragment_B,
+                eri_ABAB, eri_ABAB_ikjl_perm,
+            )
             H[0, 1] = H[1, 0] = V1_0A
             if verbose:
-                print(f"  V1_0,LE_A = {V1_0A:.8f}")
+                print(f"  V1_0,LE_A = {V1_0A:.8f} Ha = "
+                      f"{V1_0A * 27211.4:.4f} meV")
 
     if n > 2 and include_gs_le:
         td_B = transition_density_for_state(fragment_B, 1)
         if np.any(np.abs(td_B) > 1e-10):
-            hGF = one_electron_operator(fragment_B.mol, fragment_A.mol, all_mols)
-            P_mixed_BA = td_B @ S_AB.T @ sA_gs.density_total
-            V1_0B = 0.5 * np.einsum("ij,ji->", hGF, P_mixed_BA)
+            V1_0B = gs_le_coupling(
+                td_B, sA_gs.density_total,
+                fragment_B, fragment_A,
+                eri_BABA, eri_BABA_ikjl_perm,
+            )
             H[0, 2] = H[2, 0] = V1_0B
             if verbose:
-                print(f"  V1_00,LE_B = {V1_0B:.8f}")
-
+                print(f"  V1_00,LE_B = {V1_0B:.8f} Ha = "
+                      f"{V1_0B * 27211.4:.4f} meV")
     # Off-diagonal H_AB = Y_LE,0|0,LE (Frenkel coupling)
     if n > 2:
         td_A = transition_density_for_state(fragment_A, 1)
