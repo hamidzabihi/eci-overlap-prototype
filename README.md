@@ -19,7 +19,7 @@ The repo has two complementary goals:
 ## Quick start
 
     pip install numpy pytest pyscf matplotlib
-    pytest -v                                       # 88 tests
+    pytest -v                                       # 90 tests
     python examples/build_fragment_overlap.py       # fragment overlap from PySCF
     python examples/two_fragment_eci_demo.py        # working ECIS calculation
     python examples/diabatization_demo.py           # state tracking (synthetic)
@@ -46,7 +46,7 @@ The repo has two complementary goals:
       phase_tracking.py        # wavefunction phase correction (simple + robust)
       diabatization.py         # state tracking across a geometry path
       excitonic_hamiltonian.py # ECI Hamiltonian from fragment calculations
-    tests/                     # 88 tests, all passing
+    tests/                     # 90 tests, all passing
     examples/                  # runnable demos
     BUILDING.md                # how to build wfoverlap with gfortran
     NOTES.md                   # technical writeup and known limitations
@@ -71,7 +71,7 @@ The repo has two complementary goals:
 
 The remaining stages map directly onto the ECI2GAME postdoc deliverables.
 
-## Recent milestone — triplet extension (tag `triplet-extension-v1`)
+## Previous milestone — triplet extension (tag `v0.2-singlet-validated-triplet-experimental`)
 
 The ECI Hamiltonian now includes the triplet block alongside the
 singlet block, with a 6×6 basis:

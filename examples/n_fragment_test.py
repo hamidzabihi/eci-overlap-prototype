@@ -53,6 +53,15 @@ def main():
     print("N-fragment ECI validation")
     print("=" * 66)
     print(f"  separation: {args.sep} A")
+
+    if args.sep < 5.0:
+        print()
+        print("WARNING: separation < 5.0 A. For ethylene, the ECI")
+        print("strong-orthogonality assumption breaks down below ~5 A")
+        print("and the MAD against direct CIS grows rapidly. Expected")
+        print("values: 195 meV (3-frag) / 220 meV (4-frag) at 4.0 A;")
+        print("18 meV / 20 meV at 5.0 A. See docs/multi_fragment_validation.md.")
+        print()
     print(f"  basis:      {args.basis}")
     print(f"  nstates/frag: {args.nstates}")
     print()
