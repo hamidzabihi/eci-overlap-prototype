@@ -21,3 +21,4 @@ Thumbs.db
 # local artifacts
 *.deb
 quarto-*-linux-amd64.deb
+examples/BA_BD_overlap/
