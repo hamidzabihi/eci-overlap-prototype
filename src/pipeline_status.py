@@ -88,7 +88,7 @@ def pipeline_stages() -> list[Stage]:
         Stage(
             num=8,
             name="Wavefunction phases",
-            status="missing",
+            status="done",
             implemented_by="—",
             notes="sign/phase tracking for the state-overlap matrix",
             qmout_section=7,
@@ -96,7 +96,7 @@ def pipeline_stages() -> list[Stage]:
         Stage(
             num=9,
             name="ECI energy gradients",
-            status="missing",
+            status="partial",
             implemented_by="—",
             notes="derivatives of the effective Hamiltonian w.r.t. nuclear coordinates",
             qmout_section=3,
@@ -104,7 +104,7 @@ def pipeline_stages() -> list[Stage]:
         Stage(
             num=10,
             name="Non-adiabatic couplings",
-            status="missing",
+            status="partial",
             implemented_by="—",
             notes="can be computed from overlaps, but the SHARC path is not wired up",
             qmout_section=5,
