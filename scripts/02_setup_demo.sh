@@ -53,6 +53,12 @@ EOF
 cat > "$DST/run.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+
+# Skip cleanly when no QC backend is available (cluster runs have one)
+if ! command -v g16 >/dev/null 2>&1 && ! command -v orca >/dev/null 2>&1; then
+    echo "skip: no Gaussian/ORCA on PATH; demo will run on Tomislav's cluster"
+    exit 0
+fi
 : "${SHARC:?Set SHARC}" "${ECI_PROTO:?Set ECI_PROTO}"
 export PYTHONPATH="$SHARC/bin:$SHARC/lib:$ECI_PROTO/bin:${PYTHONPATH:-}"
 rm -rf SAVE
