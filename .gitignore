@@ -17,3 +17,7 @@ htmlcov/
 Thumbs.db
 *.bak
 *.bak2
+
+# local artifacts
+*.deb
+quarto-*-linux-amd64.deb
