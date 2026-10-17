@@ -27,7 +27,7 @@ tar czf "$OUT" \
     --exclude='examples/BA_BD_overlap/SAVE' \
     --exclude='examples/BA_BD_overlap/*.out.*' \
     src/ scripts/ bin/ examples/BA_BD_overlap/ tests/ docs/ \
-    README.md NOTES.md NEXT_MILESTONE.md CITATION.cff pytest.ini \
+    PHASE1.md README.md NOTES.md NEXT_MILESTONE.md CITATION.cff pytest.ini \
     2>/dev/null || \
 tar czf "$OUT" \
     --exclude='__pycache__' \
