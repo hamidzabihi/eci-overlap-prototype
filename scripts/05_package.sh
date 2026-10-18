@@ -10,7 +10,7 @@ for f in bin/SHARC_ECI_GAME.py \
          examples/BA_BD_overlap/QM.in.step0 \
          examples/BA_BD_overlap/QM.in.step1 \
          docs/ECI2GAME_status.md \
-         docs/upstream_pr.md ; do
+         docs/upstream_pr.md docs/NOTES_qmout_validation.md scripts/read_overlap.py ; do
     [[ -e "$f" ]] || { echo "missing $f - run earlier scripts first" >&2; exit 1; }
 done
 
