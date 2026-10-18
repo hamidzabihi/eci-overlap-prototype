@@ -21,7 +21,6 @@ Usage:
 
 import subprocess
 import sys
-import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -75,11 +74,9 @@ def check_modules():
 
 def run_pytest(pattern, label):
     try:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = f"{ROOT}:{ROOT / 'src'}:" + env.get("PYTHONPATH", "")
         r = subprocess.run(
             [sys.executable, "-m", "pytest", str(ROOT / pattern), "-q"],
-            capture_output=True, text=True, timeout=300, cwd=str(ROOT), env=env
+            capture_output=True, text=True, timeout=300, cwd=str(ROOT),
         )
         tail = (r.stdout.strip().split("\n") or [""])[-1]
         return report(label, r.returncode == 0, tail)
@@ -115,14 +112,12 @@ def check_gs_le():
 def check_n_fragment_demo():
     banner("Section 7 -- N-fragment ECI (3- and 4-fragment chains)")
     ok = True
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{ROOT}:{ROOT / 'src'}:" + env.get("PYTHONPATH", "")
     for nfrag in (3, 4):
         try:
             r = subprocess.run(
                 [sys.executable, "examples/n_fragment_test.py",
                  "--sep", "5.0", "--nstates", "2", "--nfrag", str(nfrag)],
-                capture_output=True, text=True, timeout=300, cwd=str(ROOT), env=env
+                capture_output=True, text=True, timeout=300, cwd=str(ROOT),
             )
             mad_line = next(
                 (l for l in r.stdout.split("\n") if "MAD:" in l),
@@ -140,14 +135,12 @@ def check_n_fragment_demo():
 def check_gradients():
     banner("Section 8 -- Finite-difference gradients (S1)")
     print("  Runtime ~40 s.")
-    env = os.environ.copy()
-    env["PYTHONPATH"] = f"{ROOT}:{ROOT / 'src'}:" + env.get("PYTHONPATH", "")
     print()
     try:
         r = subprocess.run(
             [sys.executable, "examples/gradients_demo.py",
              "--separation", "4.0", "--delta", "5e-4"],
-            capture_output=True, text=True, timeout=300, cwd=str(ROOT), env=env
+            capture_output=True, text=True, timeout=300, cwd=str(ROOT),
         )
         out = r.stdout
         fb_line = next(
@@ -166,11 +159,9 @@ def check_gradients():
 def check_test_suite():
     banner("Section 9 -- Full test suite")
     try:
-        env = os.environ.copy()
-        env["PYTHONPATH"] = f"{ROOT}:{ROOT / 'src'}:" + env.get("PYTHONPATH", "")
         r = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q"],
-            capture_output=True, text=True, timeout=600, cwd=str(ROOT), env=env
+            [sys.executable, "-m", "pytest", "tests/", "-q"],
+            capture_output=True, text=True, timeout=600, cwd=str(ROOT),
         )
         tail = (r.stdout.strip().split("\n") or [""])[-1]
         return report("pytest tests/", r.returncode == 0, tail)
